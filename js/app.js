@@ -1209,9 +1209,6 @@ function panelBarvy() {
     h('h2', {}, 'Hlavní barvy'),
     h('div', { class: 'poznamka' }, 'Barva se nastaví všem vrstvám dané skupiny. Jednotlivé vrstvy doladíš na kartě Vrstvy.'),
     polozky,
-    h('h2', {}, 'Paleta ČT'),
-    h('div', { class: 'paleta' }, PALETA_CT.map((b) => h('span', { class: 'vzorek', title: b }, h('span', { style: `background:${b}` })))),
-    h('div', { class: 'poznamka' }, 'Hlavní modrá #001464 je barva písma v grafikách. Odvozené odstíny a ladicí barvy nabízí výběr barvy po kliknutí na vzorek.'),
   ];
 }
 
