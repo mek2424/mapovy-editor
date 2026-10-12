@@ -156,8 +156,8 @@ function infoMapy() {
   const sirka = mapa.getContainer().clientWidth;
   const bezOpakovani = Math.max(0, Math.ceil(Math.log2(sirka / 512) * 10) / 10);
   $('#info-mapy').textContent =
-    `Přiblížení ${mapa.getZoom().toFixed(2)} · střed ${c.lat.toFixed(3)}° s. š., ${c.lng.toFixed(3)}° v. d. · ` +
-    `šířka ${sirka} px → svět se neopakuje od přiblížení ${bezOpakovani.toFixed(1).replace('.', ',')}`;
+    `Přiblížení ${cislo(mapa.getZoom())} · střed ${cislo(c.lat, 3)}, ${cislo(c.lng, 3)} · ` +
+    `svět se neopakuje od přiblížení ${cislo(bezOpakovani, 1)} (šířka ${sirka} px)`;
 }
 
 // ---------------------------------------------------------------- výběr názvu v mapě
@@ -381,7 +381,7 @@ function vykresliPanel() {
   const obsah = $('#obsah-panelu');
   const scroll = obsah.scrollTop;
   const fn = { sablony: panelSablony, barvy: panelBarvy, vrstvy: panelVrstvy, popisky: panelPopisky, data: panelData, nastaveni: panelNastaveni }[karta];
-  obsah.replaceChildren(...[].concat(fn()));
+  obsah.replaceChildren(...[fn()].flat(Infinity).filter((x) => x != null && x !== false));
   obsah.scrollTop = scroll;
   vykresliVyberNazvu();
 }

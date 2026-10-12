@@ -26,7 +26,7 @@ export const DATA = {
 
 // Hladké „počasí“ – stejné při každém načtení, ať se náhledy dají porovnat.
 function hodnota(lon, lat) {
-  const v = Math.sin(lon / 9) * 1.2 + Math.cos(lat / 6) * 1.1 + Math.sin((lon + lat) / 13) * 0.9 + Math.cos(lon / 4.3 - lat / 7.1) * 0.6;
+  const v = Math.sin(lon / 5.3) * 1.3 + Math.cos(lat / 3.1) * 1.2 + Math.sin((lon + lat) / 4.7) * 0.9 + Math.cos(lon / 2.3 - lat / 3.9) * 0.7;
   return v;
 }
 
@@ -35,7 +35,7 @@ function mrizka(z, k, krok) {
   for (let lon = z[0]; lon < z[2]; lon += krok) {
     for (let lat = z[1]; lat < z[3]; lat += krok) {
       const v = hodnota(lon + krok / 2, lat + krok / 2);
-      const trida = Math.max(0, Math.min(6, Math.round((v + 3) / 6 * 6)));
+      const trida = Math.max(0, Math.min(6, Math.round((v + 2.6) / 5.2 * 6)));
       prvky.push({
         type: 'Feature',
         properties: { trida },
