@@ -168,12 +168,21 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
 
   styl.layers = vrstvy;
   if (recept.maska.oblasti.length) await pridejMasku(styl, recept.maska);
+  styl.layers = popiskyNahoru(styl.layers);
   if (recept.mapa.glob) styl.projection = { type: 'globe' };
   else delete styl.projection;
   return styl;
 }
 
 const round2 = (x) => Math.round(x * 100) / 100;
+
+// Šablona ČT ve Flourishi vkládá data pod souvislý blok popisků (vrstev typu
+// „symbol“) na samém vrcholu stylu. Jakákoli jiná vrstva v tom bloku – i skrytá –
+// ho přeruší a popisky pod ní skončí pod daty. Proto se všechny popisky
+// přesunou nahoru za ostatní vrstvy; jejich vzájemné pořadí zůstává.
+export function popiskyNahoru(vrstvy) {
+  return [...vrstvy.filter((l) => l.type !== 'symbol'), ...vrstvy.filter((l) => l.type === 'symbol')];
+}
 function jeVyrazSeZoomem(v) {
   return Array.isArray(v) && JSON.stringify(v).includes('"zoom"');
 }
