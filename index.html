@@ -24,18 +24,17 @@
       <button id="historie" class="tl" title="Historie úprav – vrátit o více kroků">Historie</button>
       <button id="ulozit" class="tl tl-ulozit" title="Uložit mapu (Ctrl+S)">Uložit</button>
       <button id="stahnout" class="tl tl-hlavni">Stáhnout style.json</button>
+      <button id="ucet" class="tl ucet" aria-haspopup="menu" title="Tvoje jméno, odkaz pro kolegy, odhlášení"><span id="ucet-pismeno" class="pismeno" aria-hidden="true">?</span><span id="ucet-jmeno">Bez jména</span><span class="sipka-dolu" aria-hidden="true">▾</span></button>
     </div>
   </header>
 
   <main class="plocha">
     <aside class="panel">
       <nav class="karty" role="tablist">
-        <button data-karta="barvy" class="aktivni">Barvy</button>
-        <button data-karta="vrstvy">Vrstvy</button>
+        <button data-karta="vrstvy" class="aktivni">Vrstvy</button>
+        <button data-karta="nazvy">Názvy</button>
         <button data-karta="maska">Maska</button>
-        <button data-karta="popisky">Popisky</button>
         <button data-karta="data">Data</button>
-        <button data-karta="nastaveni">Nastavení</button>
       </nav>
       <section id="obsah-panelu" class="obsah-panelu"></section>
     </aside>
