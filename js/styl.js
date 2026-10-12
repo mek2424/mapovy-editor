@@ -183,6 +183,9 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
   styl.layers = vrstvy;
   if (recept.maska.oblasti.length) await pridejMasku(styl, recept.maska);
   styl.layers = popiskyNahoru(styl.layers);
+  // Šablona ČT ve Flourishi při „Show place labels“ zapne VŠECHNY vrstvy popisků,
+  // i ty skryté. Skryté vrstvy proto do staženého stylu vůbec nepatří.
+  if (moznosti.export) styl.layers = styl.layers.filter((l) => l.layout?.visibility !== 'none');
   if (recept.mapa.glob) styl.projection = { type: 'globe' };
   else delete styl.projection;
   return styl;
