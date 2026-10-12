@@ -179,3 +179,14 @@ h2:first-child { margin-top: 0; }
   .lista { flex-wrap: wrap; }
   .znacka { display: none; }
 }
+
+/* Schémata ČT */
+.schemata { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.schema {
+  border: 1px solid var(--cara); background: var(--bila); border-radius: var(--r); padding: 8px;
+  cursor: pointer; display: flex; flex-direction: column; gap: 6px; align-items: stretch; text-align: left;
+}
+.schema:hover { border-color: var(--modra); box-shadow: 0 2px 8px rgba(0,20,100,0.12); }
+.nahled-schematu { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; height: 26px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(0,0,0,0.12); }
+.jmeno-schematu { font-size: 12px; font-weight: 600; }
+.tl-zapnuto { background: var(--modra-svetla); border-color: var(--modra); color: var(--modra); }

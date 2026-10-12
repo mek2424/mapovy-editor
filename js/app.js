@@ -1,7 +1,8 @@
 import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie } from './styl.js';
 import { PALETA_CT, SKALY, odstiny, ladici, hex, kontrast } from './barvy.js';
 import { SKUPINY, skupina, nazevVrstvy, BARVY_VRSTVY, KRYTI_VRSTVY, POPISY_VLASTNOSTI } from './vrstvy.js';
-import { DATA, pridejData } from './data.js';
+import { DATA, pridejData, vlastniData, nastavVlastniData, prectiSoubor, hraniceDat } from './data.js';
+import { SCHEMATA, zmenySchematu, CISTY_PODKLAD } from './schemata.js';
 import * as ul from './ulozeni.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -337,44 +338,111 @@ const BODY_SIDEL = [
   ['label_village', 'village', 1.6, 9], ['label_town', 'town', 2, 6], ['label_city', 'city', 2.6, 3], ['label_city_capital', 'capital', 3.2, 3],
 ];
 
-function pridejVlastni(klic) {
+// Přidání vlastní vrstvy přímo do receptu (bez kroku pro „Zpět“).
+function pridejVlastniDo(recept, styl, klic) {
   const v = VLASTNI[klic];
-  zmena((s) => {
-    if (s.recept.pridane.some((p) => p.vrstva.id === v.vrstva.id)) return;
-    const ids = posledniStyl.layers.map((l) => l.id);
-    const za = v.za.find((x) => ids.includes(x)) || null;
-    s.recept.pridane.push({ za, vrstva: kopie(v.vrstva) });
-    delete s.recept.vrstvy[v.vrstva.id];
-  });
+  if (recept.pridane.some((p) => p.vrstva.id === v.vrstva.id)) return;
+  const ids = styl.layers.map((l) => l.id);
+  const za = v.za.find((x) => ids.includes(x)) || null;
+  recept.pridane.push({ za, vrstva: kopie(v.vrstva) });
+  delete recept.vrstvy[v.vrstva.id];
 }
 
-function pridejBodySidel() {
-  zmena((s) => {
-    for (const [popisek, druh, r, minzoom] of BODY_SIDEL) {
-      const id = `bod_${druh === 'capital' ? 'city_capital' : druh}`;
-      if (s.recept.pridane.some((p) => p.vrstva.id === id)) continue;
-      const l = posledniStyl.layers.find((x) => x.id === popisek);
-      if (!l) continue;
-      const i = posledniStyl.layers.findIndex((x) => x.id === popisek);
-      s.recept.pridane.push({
-        za: i > 0 ? posledniStyl.layers[i - 1].id : null,
-        vrstva: {
-          id, type: 'circle', source: 'openmaptiles', 'source-layer': 'place', filter: kopie(l.filter), minzoom,
-          paint: { 'circle-radius': r, 'circle-color': '#001464', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
-        },
-      });
-      // Černý puntík ze sady ikon se tím nahradí: ikonu u popisku vypneme.
-      s.recept.vrstvy[popisek] = s.recept.vrstvy[popisek] || {};
-      s.recept.vrstvy[popisek].layout = { ...(s.recept.vrstvy[popisek].layout || {}), 'icon-image': null };
+function pridejBodyDo(recept, styl, barva = '#001464', obrys = '#ffffff') {
+  for (const [popisek, druh, r, minzoom] of BODY_SIDEL) {
+    const id = `bod_${druh === 'capital' ? 'city_capital' : druh}`;
+    const l = styl.layers.find((x) => x.id === popisek);
+    if (!l) continue;
+    const existujici = recept.pridane.find((p) => p.vrstva.id === id);
+    if (existujici) {
+      existujici.vrstva.paint['circle-color'] = barva;
+      existujici.vrstva.paint['circle-stroke-color'] = obrys;
+      continue;
     }
-  });
+    const i = styl.layers.findIndex((x) => x.id === popisek);
+    recept.pridane.push({
+      za: i > 0 ? styl.layers[i - 1].id : null,
+      vrstva: {
+        id, type: 'circle', source: 'openmaptiles', 'source-layer': 'place', filter: kopie(l.filter), minzoom,
+        paint: { 'circle-radius': r, 'circle-color': barva, 'circle-stroke-color': obrys, 'circle-stroke-width': 1 },
+      },
+    });
+    // Černý puntík ze sady ikon se tím nahradí: ikonu u popisku vypneme.
+    recept.vrstvy[popisek] = recept.vrstvy[popisek] || {};
+    recept.vrstvy[popisek].layout = { ...(recept.vrstvy[popisek].layout || {}), 'icon-image': null };
+  }
 }
 
-function odeberVlastni(id) {
-  zmena((s) => {
-    s.recept.pridane = s.recept.pridane.filter((p) => p.vrstva.id !== id);
-    delete s.recept.vrstvy[id];
-  });
+function odeberVlastniZ(recept, id) {
+  recept.pridane = recept.pridane.filter((p) => p.vrstva.id !== id);
+  delete recept.vrstvy[id];
+  if (id.startsWith('bod_')) {
+    const popisek = `label_${id.slice(4)}`;
+    if (recept.vrstvy[popisek]?.layout && 'icon-image' in recept.vrstvy[popisek].layout) {
+      delete recept.vrstvy[popisek].layout['icon-image'];
+    }
+  }
+}
+
+const pridejVlastni = (klic) => zmena((s) => pridejVlastniDo(s.recept, posledniStyl, klic));
+const pridejBodySidel = () => zmena((s) => pridejBodyDo(s.recept, posledniStyl));
+const odeberVlastni = (id) => zmena((s) => odeberVlastniZ(s.recept, id));
+const odeberBodySidel = () => zmena((s) => BODY_SIDEL.forEach(([, d]) => odeberVlastniZ(s.recept, `bod_${d === 'capital' ? 'city_capital' : d}`)));
+
+// Barevné schéma ČT na recept. styl = sestavený styl téhož receptu.
+function aplikujSchemaNa(recept, styl, klic, cisty) {
+  const sch = SCHEMATA[klic];
+  for (const [id, vl, hodnota] of zmenySchematu(styl, sch)) {
+    const u = (recept.vrstvy[id] = recept.vrstvy[id] || {});
+    u.paint = u.paint || {};
+    u.paint[vl] = hodnota;
+  }
+  if (sch.pobrezi) {
+    pridejVlastniDo(recept, styl, 'pobrezi');
+    const p = recept.pridane.find((x) => x.vrstva.id === 'pobrezi');
+    p.vrstva.paint['line-color'] = sch.text;
+    if (recept.vrstvy.pobrezi) delete recept.vrstvy.pobrezi.skryta;
+  }
+  const kraje = recept.pridane.find((x) => x.vrstva.id === 'kraje_hranice');
+  if (kraje) kraje.vrstva.paint['line-color'] = sch.kraje;
+  const nazvyKraju = recept.pridane.find((x) => x.vrstva.id === 'kraje_nazvy');
+  if (nazvyKraju) Object.assign(nazvyKraju.vrstva.paint, { 'text-color': sch.staty, 'text-halo-color': sch.obrys });
+  if (sch.tmava) pridejBodyDo(recept, styl, sch.text, sch.obrys);
+  else if (recept.pridane.some((x) => x.vrstva.id === 'bod_city')) pridejBodyDo(recept, styl, sch.text, sch.obrys);
+  if (cisty) {
+    const vlastniIds = new Set(recept.pridane.map((x) => x.vrstva.id));
+    for (const l of styl.layers) {
+      if (vlastniIds.has(l.id)) continue;
+      const u = (recept.vrstvy[l.id] = recept.vrstvy[l.id] || {});
+      u.skryta = !CISTY_PODKLAD.has(l.id);
+    }
+    // Puntíky sídel ve všech přiblíženích, jako u dřívějších map.
+    if (!sch.tmava && !vlastniIds.has('bod_city')) {
+      for (const [popisek] of BODY_SIDEL) {
+        if (!styl.layers.some((l) => l.id === popisek)) continue;
+        const u = recept.vrstvy[popisek];
+        u.layout = { ...(u.layout || {}), 'icon-image': 'circle_11_black' };
+      }
+    }
+  }
+}
+
+function aplikujSchema(klic, cisty) {
+  zmena((s) => aplikujSchemaNa(s.recept, posledniStyl, klic, cisty));
+  hlaska(`Použito schéma ${SCHEMATA[klic].nazev}${cisty ? ' s čistým podkladem' : ''}.`);
+}
+
+async function novaMapa(zaklad, schema, cisty) {
+  const recept = prazdnyRecept(zaklad);
+  if (schema && schema !== 'puvodni') {
+    const styl = await sestavStyl(recept);
+    aplikujSchemaNa(recept, styl, schema, cisty);
+  }
+  historie = []; budouci = [];
+  stav.meta = { id: null, nazev: 'Nová mapa', popis: '', autor: '', vytvoreno: null };
+  stav.recept = recept;
+  stav.ulozeno = true;
+  poZmene();
 }
 
 // ---------------------------------------------------------------- panely
@@ -471,6 +539,10 @@ function panelSablony() {
     ? h('div', { class: 'zdroj-sablon' }, 'Šablony z týmové Google tabulky')
     : h('div', { class: 'zdroj-sablon mistni' }, 'Tabulka není napojená – šablony jsou jen v tomto prohlížeči. Napojíš ji v Nastavení.');
   const novy = h('select', { class: 'pole' }, Object.entries(ZAKLADY).map(([k, z]) => h('option', { value: k }, `${z.nazev} – ${z.popis}`)));
+  const noveSchema = h('select', { class: 'pole' },
+    Object.entries(SCHEMATA).map(([k, sch]) => h('option', { value: k }, `${sch.nazev} – ${sch.popis}`)),
+    h('option', { value: 'puvodni' }, 'Původní barvy podkladu'));
+  const noveCiste = h('input', { type: 'checkbox', checked: true });
   return [
     h('h2', {}, 'Aktuální mapa'),
     h('input', {
@@ -481,18 +553,17 @@ function panelSablony() {
       h('button', { class: 'tl tl-modre', onclick: () => ulozit(false) }, stav.meta.id ? 'Uložit změny' : 'Uložit jako šablonu'),
       stav.meta.id ? h('button', { class: 'tl', onclick: () => ulozit(true) }, 'Uložit jako novou') : null),
     h('h2', {}, 'Nová mapa'),
-    h('div', { class: 'radek' }, novy,
+    h('div', { class: 'radek' }, h('label', {}, 'Podklad'), novy),
+    h('div', { class: 'radek' }, h('label', {}, 'Barvy'), noveSchema),
+    h('label', { class: 'prepinac' }, noveCiste, 'Čistý podklad (jen voda, hranice, sídla, státy)'),
+    h('div', { class: 'tlacitka' },
       h('button', {
-        class: 'tl', onclick: () => {
+        class: 'tl tl-modre', onclick: () => {
           if (!stav.ulozeno && !confirm('Rozpracovaná mapa není uložená. Opravdu začít novou?')) return;
-          historie = []; budouci = [];
-          stav.meta = { id: null, nazev: 'Nová mapa', popis: '', autor: '', vytvoreno: null };
-          stav.recept = prazdnyRecept(novy.value);
-          stav.ulozeno = true;
-          poZmene();
+          novaMapa(novy.value, noveSchema.value, noveCiste.checked);
         },
-      }, 'Začít')),
-    h('div', { class: 'poznamka' }, 'Nová mapa ukáže úplně všechny vrstvy podkladu. Co nechceš, vypneš na kartě Vrstvy.'),
+      }, 'Vytvořit mapu')),
+    h('div', { class: 'poznamka' }, 'Bez čistého podkladu mapa ukáže všechny vrstvy (silnice, lesy, budovy…) přebarvené do zvoleného schématu. Co nechceš, vypneš na kartě Vrstvy.'),
     h('h2', {}, 'Šablony'),
     zdroj,
     nacitamSablony ? h('p', { class: 'poznamka' }, 'Načítám…') : null,
@@ -581,7 +652,20 @@ function panelBarvy() {
           !jednotna ? h('code', {}, ' · vrstvy se liší') : null,
           !viditelne.length ? h('code', {}, ' · skryté') : null)));
   });
+  const ciste = h('input', { type: 'checkbox' });
   return [
+    h('h2', {}, 'Barvy ČT jedním klikem'),
+    h('div', { class: 'schemata' }, Object.entries(SCHEMATA).map(([k, sch]) => h('button', {
+      class: 'schema', title: sch.popis, onclick: () => aplikujSchema(k, ciste.checked),
+    },
+    h('span', { class: 'nahled-schematu' },
+      h('span', { style: `background:${sch.pevnina}` }),
+      h('span', { style: `background:${sch.voda}` }),
+      h('span', { style: `background:${sch.hranice}` }),
+      h('span', { style: `background:${sch.text}` })),
+    h('span', { class: 'jmeno-schematu' }, sch.nazev)))),
+    h('label', { class: 'prepinac' }, ciste, 'Zároveň vyčistit podklad (jen voda, hranice, sídla, státy)'),
+    h('div', { class: 'poznamka' }, 'Schéma přebarví všechny vrstvy podkladu – i silnice, lesy a budovy – do odstínů palety ČT. Pak můžeš cokoli doladit ručně.'),
     h('h2', {}, 'Podklad'),
     h('select', {
       class: 'pole', onchange: (e) => {
@@ -606,13 +690,17 @@ function panelVrstvy() {
   for (const l of posledniStyl.layers) podleSkupin.get(skupina(l))?.push(l);
 
   const vlastni = h('div', { class: 'tlacitka' },
-    Object.entries(VLASTNI).map(([k, v]) => h('button', { class: 'tl tl-male', disabled: pridanaIds.has(v.vrstva.id), onclick: () => pridejVlastni(k) }, `+ ${v.nazev}`)),
-    h('button', { class: 'tl tl-male', disabled: pridanaIds.has('bod_city'), onclick: pridejBodySidel }, '+ Barevné body sídel'));
+    Object.entries(VLASTNI).map(([k, v]) => pridanaIds.has(v.vrstva.id)
+      ? h('button', { class: 'tl tl-male tl-zapnuto', title: 'Kliknutím vrstvu odebereš', onclick: () => odeberVlastni(v.vrstva.id) }, `✓ ${v.nazev}`)
+      : h('button', { class: 'tl tl-male', onclick: () => pridejVlastni(k) }, `+ ${v.nazev}`)),
+    pridanaIds.has('bod_city')
+      ? h('button', { class: 'tl tl-male tl-zapnuto', title: 'Kliknutím body odebereš', onclick: odeberBodySidel }, '✓ Barevné body sídel')
+      : h('button', { class: 'tl tl-male', onclick: pridejBodySidel }, '+ Barevné body sídel'));
 
   return [
     h('h2', {}, 'Přidat vlastní vrstvy'),
     vlastni,
-    h('div', { class: 'poznamka' }, 'Barevné body sídel nahradí černé puntíky (ty přebarvit nejde).'),
+    h('div', { class: 'poznamka' }, 'Zapnuté vrstvy mají ✓, dalším kliknutím je odebereš. Barevné body sídel nahradí černé puntíky (ty přebarvit nejde).'),
     h('h2', {}, `Všechny vrstvy (${posledniStyl.layers.length})`),
     h('div', { class: 'tlacitka' },
       h('button', { class: 'tl tl-male', onclick: () => zmena(() => posledniStyl.layers.forEach((l) => { upravy(l.id).skryta = false; })) }, 'Zapnout vše'),
@@ -831,16 +919,56 @@ function panelData() {
       min: 0.05, max: 1, krok: 0.05, format: (x) => `${Math.round(x * 100)} %`, klic: 'data-kryti',
       nastav: (x) => { n.kryti = x; ul.ulozRozpracovane(stav); naplanujMapu(); },
     }) : null,
-    typ === 'plochy' || n.sada === 'body_skala' ? h('div', { class: 'radek' }, h('label', {}, 'Barevná škála'),
+    (typ === 'plochy' || n.sada === 'body_skala') ? h('div', { class: 'radek' }, h('label', {}, 'Barevná škála'),
       h('select', { onchange: (e) => zmenNahled((x) => { x.skala = e.target.value; }) },
         Object.entries(SKALY).map(([k, s]) => h('option', { value: k, selected: k === n.skala }, s.nazev)))) : null,
-    n.sada === 'body_modre' ? h('div', { class: 'radek' }, h('span', { class: 'popis' }, 'Barva bodů'),
+    h('h2', {}, 'Vlastní data'),
+    h('div', { class: 'tlacitka' }, h('button', { class: 'tl', onclick: () => vyberSoubor(nahrajData, '.csv,.tsv,.txt,.json,.geojson') }, 'Nahrát CSV nebo GeoJSON')),
+    h('div', { class: 'poznamka' }, vlastniData()
+      ? `Nahráno: ${vlastniData().nazev} (${vlastniData().geojson.features.length} prvků).`
+      : 'CSV potřebuje sloupce se souřadnicemi (lat a lon, latitude a longitude, šířka a délka). Oddělovač čárka, středník i tabulátor, desetinná čárka nevadí.'),
+    n.sada === 'vlastni' && vlastniData() ? [
+      h('div', { class: 'radek' }, h('label', {}, 'Barvit'),
+        h('select', { onchange: (e) => zmenNahled((x) => { x.vlastniBarvit = e.target.value; }) },
+          [['jedna', 'Jednou barvou'], ['kategorie', 'Podle kategorií (paleta ČT)'], ['skala', 'Podle čísel (škála)']]
+            .map(([v, t]) => h('option', { value: v, selected: v === (n.vlastniBarvit || 'jedna') }, t)))),
+      n.vlastniBarvit && n.vlastniBarvit !== 'jedna' ? h('div', { class: 'radek' }, h('label', {}, 'Sloupec'),
+        h('select', { onchange: (e) => zmenNahled((x) => { x.vlastniSloupec = e.target.value; }) },
+          h('option', { value: '' }, '— vyber —'),
+          vlastniData().sloupce.filter((c) => n.vlastniBarvit !== 'skala' || c.ciselny)
+            .map((c) => h('option', { value: c.nazev, selected: c.nazev === n.vlastniSloupec }, `${c.nazev}${c.ciselny ? ' (čísla)' : ` (${c.ruznych} hodnot)`}`)))) : null,
+      n.vlastniBarvit === 'skala' ? h('div', { class: 'radek' }, h('label', {}, 'Škála'),
+        h('select', { onchange: (e) => zmenNahled((x) => { x.skala = e.target.value; }) },
+          Object.entries(SKALY).map(([k, sk]) => h('option', { value: k, selected: k === n.skala }, sk.nazev)))) : null,
+      h('div', { class: 'tlacitka' }, h('button', { class: 'tl tl-male', onclick: () => priblizNaData() }, 'Přiblížit na data')),
+    ] : null,
+    (n.sada === 'body_modre' || (n.sada === 'vlastni' && (n.vlastniBarvit || 'jedna') === 'jedna')) ? h('div', { class: 'radek' }, h('span', { class: 'popis' }, 'Barva'),
       vzorekBarvy(n.barvaBodu, (e) => otevriVybirac(e.currentTarget, n.barvaBodu, (b) => zmenNahled((x) => { x.barvaBodu = b; }, false)))) : null,
     h('label', { class: 'prepinac' },
       h('input', { type: 'checkbox', checked: n.popiskyNadDaty, onchange: (e) => zmenNahled((x) => { x.popiskyNadDaty = e.target.checked; }) }),
       'Popisky nad daty'),
-    h('div', { class: 'poznamka' }, 'Škály Reds, Blues a Oranges odpovídají předlohám ColorBrewer, ze kterých vychází Flourish. Další datové sady (regiony, vojenské újezdy, vlastní soubor) přibudou v další etapě.'),
+    h('div', { class: 'poznamka' }, 'Škály Reds, Blues a Oranges odpovídají předlohám ColorBrewer, ze kterých vychází Flourish. Vlastní data zůstávají jen v tomto prohlížeči a do stylu se nedostanou.'),
   ];
+}
+
+async function nahrajData(text, jmeno) {
+  try {
+    const g = prectiSoubor(text, jmeno);
+    nastavVlastniData(jmeno, g);
+    stav.nahled.sada = 'vlastni';
+    stav.nahled.vlastniBarvit = stav.nahled.vlastniBarvit || 'jedna';
+    poZmene();
+    priblizNaData();
+    hlaska(`Nahráno ${g.features.length} prvků z ${jmeno}.`);
+  } catch (e) {
+    hlaska(`Soubor se nepodařilo načíst: ${e.message}`, true);
+  }
+}
+
+function priblizNaData() {
+  const d = vlastniData();
+  const b = d && hraniceDat(d.geojson);
+  if (b && mapa) mapa.fitBounds(b, { padding: 60, maxZoom: 9, duration: 600 });
 }
 
 // ---- Nastavení
@@ -915,8 +1043,9 @@ function stahniSoubor(jmeno, data, kompaktne = false) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
-function vyberSoubor(poNacteni) {
+function vyberSoubor(poNacteni, prijima = '.json,application/json') {
   const vstup = $('#soubor');
+  vstup.accept = prijima;
   vstup.value = '';
   vstup.onchange = async () => {
     const f = vstup.files[0];
@@ -952,5 +1081,9 @@ document.addEventListener('keydown', (e) => {
 });
 
 aktualizujListu();
-vykresliPanel();
-aktualizujMapu();
+if (!ulozeny?.recept) {
+  novaMapa('liberty', 'svetla', false);
+} else {
+  vykresliPanel();
+  aktualizujMapu();
+}

@@ -3,9 +3,12 @@
  * Editor z GitHub Pages přes něj čte a ukládá šablony map.
  *
  * Nastavení (jednou):
- *  1. V tabulce: Rozšíření → Apps Script, sem vložit tento kód a uložit.
+ *  1. Na script.google.com (přihlášený účtem, který vlastní tabulku) → Nový projekt,
+ *     sem vložit tento kód a uložit. (Jde to i přes Rozšíření → Apps Script v tabulce.)
  *  2. Nastavení projektu (ozubené kolo) → Vlastnosti skriptu → Přidat:
- *     název HESLO, hodnota = týmové heslo.
+ *     HESLO = týmové heslo,
+ *     TABULKA = ID tabulky (část adresy mezi /d/ a /edit).
+ *     TABULKA není potřeba, když skript zakládáš přes Rozšíření v tabulce.
  *  3. Nasadit → Nové nasazení → typ Webová aplikace,
  *     Spustit jako: Já, Kdo má přístup: Kdokoli → Nasadit, povolit přístup.
  *  4. Adresu webové aplikace (končí /exec) vložit do editoru v Nastavení.
@@ -44,8 +47,16 @@ function doPost(e) {
   }
 }
 
+function sesit() {
+  const id = PropertiesService.getScriptProperties().getProperty('TABULKA');
+  if (id) return SpreadsheetApp.openById(id.trim());
+  const aktivni = SpreadsheetApp.getActiveSpreadsheet();
+  if (!aktivni) throw new Error('Skript nezná tabulku – nastav vlastnost TABULKA.');
+  return aktivni;
+}
+
 function list() {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  const sh = sesit().getSheets()[0];
   if (sh.getLastRow() === 0) sh.appendRow(SLOUPCE);
   return sh;
 }

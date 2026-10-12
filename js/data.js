@@ -22,7 +22,129 @@ export const DATA = {
   body_modre: { nazev: 'Body – statutární města, jedna barva', typ: 'body' },
   body_paleta: { nazev: 'Body – statutární města, barvy palety', typ: 'body' },
   body_skala: { nazev: 'Body – statutární města, obarvené škálou', typ: 'body' },
+  vlastni: { nazev: 'Vlastní data (nahraný soubor)', typ: 'vlastni' },
 };
+
+// ---- vlastní data: CSV se souřadnicemi nebo GeoJSON
+const KLIC_VLASTNI = 'mapovy-editor:vlastni-data';
+let vlastni = null;
+try { vlastni = JSON.parse(localStorage.getItem(KLIC_VLASTNI) || 'null'); } catch { vlastni = null; }
+
+export const vlastniData = () => vlastni;
+
+export function nastavVlastniData(nazev, geojson) {
+  const sloupce = new Map();
+  for (const f of geojson.features) {
+    for (const [k, v] of Object.entries(f.properties || {})) {
+      const z = sloupce.get(k) || { cisla: 0, hodnoty: new Set() };
+      if (typeof v === 'number' && Number.isFinite(v)) z.cisla++;
+      if (z.hodnoty.size < 50) z.hodnoty.add(String(v));
+      sloupce.set(k, z);
+    }
+  }
+  const n = geojson.features.length;
+  vlastni = {
+    nazev,
+    geojson,
+    sloupce: [...sloupce.entries()].map(([k, z]) => ({ nazev: k, ciselny: z.cisla >= n * 0.8, ruznych: z.hodnoty.size })),
+  };
+  try {
+    const t = JSON.stringify(vlastni);
+    if (t.length < 2_500_000) localStorage.setItem(KLIC_VLASTNI, t); else localStorage.removeItem(KLIC_VLASTNI);
+  } catch { /* příliš velké pro prohlížeč – data zůstanou jen do zavření stránky */ }
+  return vlastni;
+}
+
+function rozdelCsv(text) {
+  const radek1 = text.split(/\r?\n/)[0];
+  const odd = [';', '\t', ','].map((o) => [o, radek1.split(o).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const radky = [];
+  let pole = []; let bunka = ''; let uvozovky = false;
+  for (let i = 0; i < text.length; i++) {
+    const z = text[i];
+    if (uvozovky) {
+      if (z === '"' && text[i + 1] === '"') { bunka += '"'; i++; }
+      else if (z === '"') uvozovky = false;
+      else bunka += z;
+    } else if (z === '"') uvozovky = true;
+    else if (z === odd) { pole.push(bunka); bunka = ''; }
+    else if (z === '\n' || z === '\r') {
+      if (z === '\r' && text[i + 1] === '\n') i++;
+      pole.push(bunka); bunka = '';
+      if (pole.some((x) => x !== '')) radky.push(pole);
+      pole = [];
+    } else bunka += z;
+  }
+  pole.push(bunka);
+  if (pole.some((x) => x !== '')) radky.push(pole);
+  return { radky, odd };
+}
+
+const naCislo = (v) => {
+  if (typeof v !== 'string') return v;
+  const t = v.trim().replace(/\s/g, '');
+  if (!/^[-+]?\d+([.,]\d+)?$/.test(t)) return v;
+  return parseFloat(t.replace(',', '.'));
+};
+
+// Text souboru → GeoJSON. Vyhodí chybu se srozumitelnou zprávou.
+export function prectiSoubor(text, jmeno) {
+  const t = text.replace(/^\uFEFF/, '').trim();
+  if (t.startsWith('{') || t.startsWith('[')) {
+    const j = JSON.parse(t);
+    if (j.type === 'FeatureCollection') return j;
+    if (j.type === 'Feature') return { type: 'FeatureCollection', features: [j] };
+    if (j.type && j.coordinates) return { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: j }] };
+    throw new Error('JSON není GeoJSON.');
+  }
+  const { radky } = rozdelCsv(t);
+  if (radky.length < 2) throw new Error('Soubor nemá žádné řádky s daty.');
+  const hlavicka = radky[0].map((x) => x.trim());
+  const najdi = (re) => hlavicka.findIndex((h) => re.test(h.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()));
+  const iLat = najdi(/^(lat|latitude|y|sirka|zem\.? ?sirka|zemepisna sirka)$/);
+  const iLon = najdi(/^(lon|lng|long|longitude|x|delka|zem\.? ?delka|zemepisna delka)$/);
+  if (iLat < 0 || iLon < 0) throw new Error(`V ${jmeno} chybí sloupce se souřadnicemi (např. lat a lon, latitude a longitude).`);
+  const features = [];
+  for (const r of radky.slice(1)) {
+    const lat = naCislo(r[iLat] ?? ''); const lon = naCislo(r[iLon] ?? '');
+    if (typeof lat !== 'number' || typeof lon !== 'number') continue;
+    const properties = {};
+    hlavicka.forEach((h, i) => { if (i !== iLat && i !== iLon) properties[h] = naCislo(r[i] ?? ''); });
+    features.push({ type: 'Feature', properties, geometry: { type: 'Point', coordinates: [lon, lat] } });
+  }
+  if (!features.length) throw new Error('Žádný řádek nemá platné souřadnice.');
+  return { type: 'FeatureCollection', features };
+}
+
+export function hraniceDat(g) {
+  const b = [180, 90, -180, -90];
+  const pridej = (c) => {
+    if (typeof c[0] === 'number') { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); } else c.forEach(pridej);
+  };
+  g.features.forEach((f) => f.geometry && pridej(f.geometry.coordinates));
+  return b[0] <= b[2] ? [[b[0], b[1]], [b[2], b[3]]] : null;
+}
+
+function barvaVlastnich(n) {
+  const sl = n.vlastniSloupec;
+  if (!vlastni || !sl || n.vlastniBarvit === 'jedna') return n.barvaBodu || '#001464';
+  if (n.vlastniBarvit === 'kategorie') {
+    const hodnoty = [...new Set(vlastni.geojson.features.map((f) => String(f.properties?.[sl])))].slice(0, PALETA_CT.length);
+    if (!hodnoty.length) return '#001464';
+    return ['match', ['to-string', ['get', sl]], ...hodnoty.flatMap((h, i) => [h, PALETA_CT[i]]), '#9aa0b4'];
+  }
+  const skala = (SKALY[n.skala] || SKALY.anomalie).barvy;
+  const cisla = vlastni.geojson.features.map((f) => f.properties?.[sl]).filter((v) => typeof v === 'number').sort((a, b) => a - b);
+  if (!cisla.length) return '#001464';
+  const prahy = [];
+  for (let i = 1; i < skala.length; i++) {
+    const p = cisla[Math.floor((cisla.length * i) / skala.length)];
+    if (p != null && (!prahy.length || p > prahy.at(-1))) prahy.push(p);
+  }
+  const vyraz = ['step', ['to-number', ['get', sl], cisla[0]], skala[0]];
+  prahy.forEach((p, i) => vyraz.push(p, skala[Math.min(skala.length - 1, Math.round(((i + 1) * (skala.length - 1)) / prahy.length))]));
+  return vyraz;
+}
 
 // Hladké „počasí“ – stejné při každém načtení, ať se náhledy dají porovnat.
 function hodnota(lon, lat) {
@@ -72,11 +194,19 @@ const barvyTrid = (barvy) => ['match', ['get', 'trida'], ...barvy.flatMap((b, i)
 // nastaveni: { sada, kryti, skala, barvaBodu, popiskyNadDaty }
 export function pridejData(styl, nastaveni) {
   const sada = nastaveni?.sada || 'zadna';
-  if (sada === 'zadna') return styl;
-  styl.sources[ZDROJ] = { type: 'geojson', data: geojson(sada) };
+  if (sada === 'zadna' || (sada === 'vlastni' && !vlastni)) return styl;
+  styl.sources[ZDROJ] = { type: 'geojson', data: sada === 'vlastni' ? vlastni.geojson : geojson(sada) };
   const skala = SKALY[nastaveni.skala] || SKALY.anomalie;
   const vrstvy = [];
-  if (DATA[sada].typ === 'plochy') {
+  if (sada === 'vlastni') {
+    const barva = barvaVlastnich(nastaveni);
+    const kryti = nastaveni.kryti ?? 0.4;
+    vrstvy.push(
+      { id: 'zkusebni_plochy', type: 'fill', source: ZDROJ, filter: ['match', ['geometry-type'], ['Polygon', 'MultiPolygon'], true, false], paint: { 'fill-color': barva, 'fill-opacity': kryti } },
+      { id: 'zkusebni_obrys', type: 'line', source: ZDROJ, filter: ['match', ['geometry-type'], ['LineString', 'MultiLineString'], true, false], paint: { 'line-color': barva, 'line-width': 2, 'line-opacity': Math.min(1, kryti + 0.4) } },
+      { id: 'zkusebni_body', type: 'circle', source: ZDROJ, filter: ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false], paint: { 'circle-color': barva, 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10], 'circle-opacity': Math.min(1, kryti + 0.5), 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 } },
+    );
+  } else if (DATA[sada].typ === 'plochy') {
     vrstvy.push({
       id: 'zkusebni_plochy', type: 'fill', source: ZDROJ,
       paint: { 'fill-color': barvyTrid(skala.barvy), 'fill-opacity': nastaveni.kryti ?? 0.4, 'fill-antialias': false },
