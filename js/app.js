@@ -24,7 +24,7 @@ function h(tag, vl = {}, ...deti) {
 
 // ---------------------------------------------------------------- stav
 
-const VYCHOZI_NAHLED = { sada: 'anomalie', kryti: 0.4, skala: 'anomalie', barvaBodu: '#001464', popiskyNadDaty: true };
+const VYCHOZI_NAHLED = { sada: 'zadna', kryti: 0.4, skala: 'anomalie', barvaBodu: '#001464', popiskyNadDaty: true };
 const novaMeta = (nazev = 'Nová mapa') => ({ id: null, nazev, popis: '', autor: '', upravil: '', vytvoreno: null, upraveno: null });
 let stav = {
   meta: novaMeta(),
@@ -32,9 +32,11 @@ let stav = {
   nahled: { ...VYCHOZI_NAHLED },
   ulozeno: true,
 };
-const ulozeny = ul.nactiRozpracovane();
-if (ulozeny?.recept) {
-  stav = { ...stav, ...ulozeny, recept: doplnRecept(ulozeny.recept), nahled: { ...VYCHOZI_NAHLED, ...ulozeny.nahled } };
+// Editor začíná na výchozí mapě bez zkušebních dat. Jen neuložené změny z minula se obnoví.
+const rozpracovano = ul.nactiRozpracovane();
+const ulozeny = rozpracovano?.recept && rozpracovano.ulozeno === false ? rozpracovano : null;
+if (ulozeny) {
+  stav = { ...stav, ...ulozeny, recept: doplnRecept(ulozeny.recept), nahled: { ...VYCHOZI_NAHLED, ...ulozeny.nahled, sada: 'zadna' } };
 }
 
 let historie = [];
@@ -400,6 +402,40 @@ const BODY_SIDEL = [
   ['label_village', 'village', 1.6, 9], ['label_town', 'town', 2, 6], ['label_city', 'city', 2.6, 3], ['label_city_capital', 'capital', 3.2, 3],
 ];
 
+// Černé puntíky u názvů sídel (ikona circle_11_black z podkladu, přebarvit nejde).
+const PUNTIKY = [['label_city_capital', 'Hlavní města'], ['label_city', 'Města'], ['label_town', 'Menší města'], ['label_village', 'Obce']];
+const jePuntikova = (id) => PUNTIKY.some(([p]) => p === id);
+function maPuntik(id) {
+  const ic = vrstvaStylu(id)?.layout?.['icon-image'];
+  return ic != null && ic !== '';
+}
+// zap: puntík jako v podkladu (u hodně přiblížené mapy zmizí), vyp: puntík nikde.
+function nastavPuntik(recept, id, zap) {
+  const u = (recept.vrstvy[id] = recept.vrstvy[id] || {});
+  if (zap) {
+    if (u.layout && u.layout['icon-image'] === null) delete u.layout['icon-image'];
+  } else {
+    u.layout = { ...(u.layout || {}), 'icon-image': null };
+  }
+}
+function prepniPuntiky(ids, zap) {
+  zmena((s) => ids.forEach((id) => nastavPuntik(s.recept, id, zap)));
+}
+function blokPuntiku() {
+  const vrstvy = PUNTIKY.filter(([id]) => vrstvaStylu(id));
+  if (!vrstvy.length) return null;
+  const zapnute = vrstvy.map(([id]) => maPuntik(id));
+  const vse = h('input', {
+    type: 'checkbox', checked: zapnute.every(Boolean),
+    onchange: (e) => prepniPuntiky(vrstvy.map(([id]) => id), e.target.checked),
+  });
+  vse.indeterminate = zapnute.some(Boolean) && !zapnute.every(Boolean);
+  return h('div', { class: 'blok-puntiku' },
+    h('label', { class: 'prepinac hlavni-prepinac' }, vse, h('span', { class: 'ukazka-puntiku', 'aria-hidden': 'true' }), 'Černé puntíky u názvů sídel'),
+    h('div', { class: 'cipy-puntiku' }, vrstvy.map(([id, nazev], i) => h('label', { class: `cip-puntiku${zapnute[i] ? ' zapnuto' : ''}` },
+      h('input', { type: 'checkbox', checked: zapnute[i], onchange: (e) => prepniPuntiky([id], e.target.checked) }), nazev))));
+}
+
 // Přidání vlastní vrstvy přímo do receptu (bez kroku pro „Zpět“).
 function pridejVlastniDo(recept, styl, klic) {
   const v = VLASTNI[klic];
@@ -493,6 +529,9 @@ function aplikujSchema(klic, cisty) {
   zmena((s) => aplikujSchemaNa(s.recept, posledniStyl, klic, cisty));
   hlaska(`Použito schéma ${SCHEMATA[klic].nazev}${cisty ? ' s čistým podkladem' : ''}.`);
 }
+
+// Výchozí mapa: podklad Liberty, všechny vrstvy zapnuté, celé v barvách ČT světlá.
+const vychoziMapa = () => novaMapa('liberty', 'svetla', false);
 
 async function novaMapa(zaklad, schema, cisty) {
   const recept = prazdnyRecept(zaklad);
@@ -637,7 +676,7 @@ function obrazekKarty(s) {
 // ---- okno Mapy
 const mapyUI = {
   otevreno: false, zalozka: 'tymove', hledat: '', filtr: 'vse', razeni: 'upraveno', menu: null,
-  nova: { zaklad: 'liberty', schema: 'svetla', cisty: true },
+  nova: { zaklad: 'liberty', schema: 'svetla', cisty: false },
 };
 
 function otevriMapy(zalozka) {
@@ -1195,6 +1234,8 @@ function panelVrstvy() {
     h('h2', {}, 'Přidat vlastní vrstvy'),
     vlastni,
     h('div', { class: 'poznamka' }, 'Zapnuté vrstvy mají ✓, dalším kliknutím je odebereš. Barevné body sídel nahradí černé puntíky (ty přebarvit nejde).'),
+    h('h2', {}, 'Puntíky'),
+    blokPuntiku(),
     h('h2', {}, `Všechny vrstvy (${posledniStyl.layers.length})`),
     h('div', { class: 'tlacitka' },
       h('button', { class: 'tl tl-male', onclick: () => zmena(() => posledniStyl.layers.forEach((l) => { upravy(l.id).skryta = false; })) }, 'Zapnout vše'),
@@ -1226,6 +1267,14 @@ function radekVrstvy(l, pridana) {
       h('div', { class: 'jmeno', onclick: () => { otevrena ? otevreneVrstvy.delete(l.id) : otevreneVrstvy.add(l.id); vykresliPanel(); } },
         nazevVrstvy(l), h('small', {}, `${l.id} · ${l.type}${l.minzoom != null ? ` · od ${l.minzoom}` : ''}${l.maxzoom != null ? ` · do ${l.maxzoom}` : ''}`)),
       jeUpravena(l.id) || pridana ? h('span', { class: 'upraveno', title: pridana ? 'Vlastní vrstva' : 'Upravená vrstva' }) : null,
+      jePuntikova(l.id) ? (() => {
+        const zap = maPuntik(l.id);
+        return h('button', {
+          class: `prepinac-puntiku${zap ? ' zapnuto' : ''}`, 'aria-pressed': String(zap),
+          title: zap ? 'Černý puntík je zapnutý – kliknutím vypnout' : 'Černý puntík je vypnutý – kliknutím zapnout',
+          'aria-label': 'Černý puntík', onclick: () => prepniPuntiky([l.id], !zap),
+        }, h('span'));
+      })() : null,
       barvy.slice(0, 2).map((p) => vzorekBarvy(l.paint?.[p] ?? '#000000',
         (e) => otevriVybirac(e.currentTarget, typeof l.paint?.[p] === 'string' ? l.paint[p] : '#001464',
           (b, klic) => zmena(() => nastav(l.id, 'paint', p, b), { klic, prekreslit: false }),
@@ -1536,6 +1585,8 @@ function panelMaska() {
 function panelPopisky() {
   const pop = stav.recept.popisky;
   return [
+    h('h2', {}, 'Puntíky'),
+    blokPuntiku(),
     h('h2', {}, 'Popisky a data'),
     h('label', { class: 'prepinac' },
       h('input', { type: 'checkbox', checked: stav.nahled.popiskyNadDaty, onchange: (e) => { stav.nahled.popiskyNadDaty = e.target.checked; poZmene(false); } }),
@@ -1769,8 +1820,8 @@ document.addEventListener('keydown', (e) => {
 });
 
 aktualizujListu();
-if (!ulozeny?.recept) {
-  novaMapa('liberty', 'svetla', false);
+if (!ulozeny) {
+  vychoziMapa();
 } else {
   vykresliPanel();
   aktualizujMapu();

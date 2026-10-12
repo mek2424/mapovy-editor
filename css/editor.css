@@ -135,7 +135,7 @@ h2:first-child { margin-top: 0; }
 .vrstva.skryta > .hlava .jmeno { opacity: 0.5; }
 .vrstva .upravy { display: none; padding: 4px 12px 12px 36px; background: #fbfbfd; }
 .vrstva.otevrena .upravy { display: block; }
-.upraveno { width: 6px; height: 6px; border-radius: 50%; background: var(--modra); flex: none; }
+.upraveno { width: 5px; height: 5px; border-radius: 50%; background: #9aa5cf; flex: none; }
 
 /* Výběr barvy */
 .vybirac {
@@ -410,3 +410,22 @@ body.zamceno .lista, body.zamceno .plocha { filter: blur(2px); }
   .ulozeni-mrizka { flex-direction: column; }
   .razeni { margin-left: 0; }
 }
+
+/* ---------------------------------------------------------------- Černé puntíky u sídel */
+.blok-puntiku { border: 1px solid var(--cara); border-radius: var(--r); padding: 10px 12px; margin: 4px 0 8px; }
+.hlavni-prepinac { margin: 0 0 8px; font-weight: 600; }
+.ukazka-puntiku { width: 9px; height: 9px; border-radius: 50%; background: #1c2340; flex: none; }
+.cipy-puntiku { display: flex; flex-wrap: wrap; gap: 6px; }
+.cip-puntiku {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 8px; border-radius: 999px;
+  border: 1px solid var(--cara); font-size: 12.5px; cursor: pointer; color: var(--text-2); user-select: none;
+}
+.cip-puntiku input { margin: 0; accent-color: var(--modra); }
+.cip-puntiku.zapnuto { border-color: #b9c1dd; background: var(--modra-svetla); color: var(--text); }
+.prepinac-puntiku {
+  width: 24px; height: 22px; flex: none; border: 1px solid var(--cara); border-radius: 5px; background: var(--bila);
+  cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; position: relative;
+}
+.prepinac-puntiku span { width: 8px; height: 8px; border-radius: 50%; background: #1c2340; }
+.prepinac-puntiku:not(.zapnuto) span { background: none; border: 1.5px solid #9aa3c4; width: 7px; height: 7px; }
+.prepinac-puntiku:hover { border-color: var(--modra); }
