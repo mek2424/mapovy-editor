@@ -55,7 +55,7 @@ const snimek = () => JSON.stringify({ meta: stav.meta, recept: stav.recept });
 function zmena(fn, { klic = null, prekreslit = true } = {}) {
   const ted = Date.now();
   if (!(klic && klic === posledniKlic && ted - posledniCas < 1500)) {
-    historie.push(snimek());
+    historie.push({ s: snimek(), cas: ted });
     if (historie.length > 200) historie.shift();
     budouci = [];
   }
@@ -66,28 +66,79 @@ function zmena(fn, { klic = null, prekreslit = true } = {}) {
   poZmene(prekreslit);
 }
 
+// Panel se kreslí až z hotového stylu, jinak by ukazoval staré hodnoty.
+let prekreslitPoStylu = false;
 function poZmene(prekreslit = true) {
   ul.ulozRozpracovane(stav);
   aktualizujListu();
+  if (prekreslit) prekreslitPoStylu = true;
   naplanujMapu();
-  if (prekreslit) vykresliPanel();
 }
 
-function zpet() {
-  if (!historie.length) return;
-  budouci.push(snimek());
-  const s = JSON.parse(historie.pop());
-  stav.meta = s.meta; stav.recept = s.recept; stav.ulozeno = false;
+function obnovSnimek(retezec) {
+  const s = JSON.parse(retezec);
+  stav.meta = s.meta; stav.recept = doplnRecept(s.recept); stav.ulozeno = false;
   posledniKlic = null;
   poZmene();
+}
+function zpet(kroku = 1) {
+  for (let i = 0; i < kroku && historie.length; i++) {
+    budouci.push({ s: snimek(), cas: Date.now() });
+    const k = historie.pop();
+    stav.meta = JSON.parse(k.s).meta; stav.recept = JSON.parse(k.s).recept;
+  }
+  obnovSnimek(snimek());
 }
 function znovu() {
   if (!budouci.length) return;
-  historie.push(snimek());
-  const s = JSON.parse(budouci.pop());
-  stav.meta = s.meta; stav.recept = s.recept; stav.ulozeno = false;
-  posledniKlic = null;
-  poZmene();
+  historie.push({ s: snimek(), cas: Date.now() });
+  obnovSnimek(budouci.pop().s);
+}
+
+// Krátký popis kroku: co se změnilo mezi dvěma stavy.
+function popisKroku(predtim, potom) {
+  const a = JSON.parse(predtim); const b = JSON.parse(potom);
+  const zmeny = [];
+  if (a.meta.nazev !== b.meta.nazev) zmeny.push('název mapy');
+  if (a.recept.zaklad !== b.recept.zaklad) zmeny.push('podklad');
+  if (JSON.stringify(a.recept.maska) !== JSON.stringify(b.recept.maska)) zmeny.push('maska');
+  if (JSON.stringify(a.recept.popisky) !== JSON.stringify(b.recept.popisky)) zmeny.push('jednotlivé názvy');
+  if (JSON.stringify(a.recept.mapa) !== JSON.stringify(b.recept.mapa)) zmeny.push('glóbus');
+  const pa = a.recept.pridane.map((x) => x.vrstva.id); const pb = b.recept.pridane.map((x) => x.vrstva.id);
+  pb.filter((x) => !pa.includes(x)).forEach((x) => zmeny.push(`+ ${nazevVrstvy({ id: x })}`));
+  pa.filter((x) => !pb.includes(x)).forEach((x) => zmeny.push(`− ${nazevVrstvy({ id: x })}`));
+  const ids = new Set([...Object.keys(a.recept.vrstvy), ...Object.keys(b.recept.vrstvy)]);
+  const vr = [...ids].filter((id) => JSON.stringify(a.recept.vrstvy[id]) !== JSON.stringify(b.recept.vrstvy[id]));
+  if (vr.length > 3) zmeny.push(`${vr.length} vrstev`);
+  else vr.forEach((id) => zmeny.push(nazevVrstvy({ id })));
+  return zmeny.length ? zmeny.slice(0, 3).join(', ') : 'beze změny vzhledu';
+}
+
+function otevriHistorii(kotva) {
+  const box = $('#vybirac');
+  if (vybiracZavri) vybiracZavri(false);
+  const polozky = [];
+  let dalsi = snimek();
+  for (let i = historie.length - 1; i >= 0 && polozky.length < 40; i--) {
+    const k = historie[i];
+    const pocet = historie.length - i;
+    const sekund = Math.round((Date.now() - k.cas) / 1000);
+    const kdy = sekund < 60 ? `před ${sekund} s` : sekund < 3600 ? `před ${Math.round(sekund / 60)} min` : new Date(k.cas).toLocaleTimeString('cs');
+    polozky.push(h('button', { class: 'volba', onclick: () => { zavri(); zpet(pocet); } },
+      `Vrátit: ${popisKroku(k.s, dalsi)}`, h('small', {}, kdy)));
+    dalsi = k.s;
+  }
+  box.replaceChildren(h('h3', {}, `Historie úprav (${historie.length})`),
+    polozky.length ? h('div', { class: 'seznam-voleb' }, polozky) : h('p', { class: 'poznamka' }, 'Zatím žádné úpravy.'),
+    h('div', { class: 'poznamka' }, 'Kliknutím se vrátíš do stavu před danou úpravou. Vrácené kroky obnovíš tlačítkem ↷.'));
+  box.hidden = false;
+  const r = kotva.getBoundingClientRect();
+  box.style.left = `${Math.max(8, Math.min(r.left - 160, innerWidth - 348))}px`;
+  box.style.top = `${r.bottom + 6}px`;
+  const venku = (e) => { if (!box.contains(e.target) && e.target !== kotva) zavri(); };
+  function zavri() { box.hidden = true; document.removeEventListener('mousedown', venku); vybiracZavri = null; }
+  setTimeout(() => document.addEventListener('mousedown', venku));
+  vybiracZavri = zavri;
 }
 
 // Úpravy jednotlivých vrstev v receptu.
@@ -149,8 +200,8 @@ async function aktualizujMapu() {
   } else {
     mapa.setStyle(sDaty, { diff: true });
   }
-  // Panel se překreslí, jen když přibyla nebo ubyla vrstva (ne při tažení posuvníku).
-  if (jineVrstvy) vykresliPanel();
+  // Panel se překreslí po změně (ne při tažení posuvníku) nebo když přibyla či ubyla vrstva.
+  if (prekreslitPoStylu || jineVrstvy) { prekreslitPoStylu = false; vykresliPanel(); }
   window.mapovyEditor = { mapa, stav, styl: () => posledniStyl };
 }
 
@@ -289,7 +340,7 @@ function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null } = {}) {
     document.removeEventListener('keydown', esc);
     vybiracZavri = null;
     // Panel až po dokončení kliknutí, jinak by zmizel vzorek, na který se právě kliká.
-    if (prekreslit && zmeneno) setTimeout(() => { if ($('#vybirac').hidden) vykresliPanel(); }, 250);
+    if (prekreslit && zmeneno) setTimeout(() => { if ($('#vybirac').hidden) { prekreslitPoStylu = true; naplanujMapu(); } }, 250);
   }
   setTimeout(() => { document.addEventListener('mousedown', venku); document.addEventListener('keydown', esc); });
   vybiracZavri = zavri;
@@ -462,6 +513,7 @@ function aktualizujListu() {
   if (document.activeElement !== n) n.value = stav.meta.nazev || '';
   $('#stav-ulozeni').textContent = stav.ulozeno ? (stav.meta.id ? 'uloženo' : '') : 'neuloženo';
   $('#zpet').disabled = !historie.length;
+  $('#historie').disabled = !historie.length;
   $('#znovu').disabled = !budouci.length;
 }
 
@@ -477,7 +529,7 @@ function posuvnik(popis, hodnota, { min, max, krok, format = (x) => x, klic, nas
         vystup.textContent = format(v);
         zmena(() => zapis(v), { klic, prekreslit: false });
       },
-      onchange: () => vykresliPanel(),
+      onchange: () => { prekreslitPoStylu = true; naplanujMapu(); },
     }),
     vystup);
 }
@@ -1235,13 +1287,14 @@ function hlaska(text, chyba = false) {
 
 document.querySelectorAll('.karty button').forEach((b) => b.addEventListener('click', () => { karta = b.dataset.karta; vykresliPanel(); }));
 $('#nazev-sablony').addEventListener('input', (e) => zmena((s) => { s.meta.nazev = e.target.value; }, { klic: 'nazev', prekreslit: false }));
-$('#zpet').addEventListener('click', zpet);
+$('#zpet').addEventListener('click', () => zpet(1));
+$('#historie').addEventListener('click', (e) => otevriHistorii(e.currentTarget));
 $('#znovu').addEventListener('click', znovu);
 $('#ulozit').addEventListener('click', () => ulozit(false));
 $('#stahnout').addEventListener('click', stahniStyl);
 document.addEventListener('keydown', (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.target.matches('input[type=text], input:not([type]), textarea')) return;
-  if (e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); zpet(); }
+  if (e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); zpet(1); }
   if (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey)) { e.preventDefault(); znovu(); }
 });
 
