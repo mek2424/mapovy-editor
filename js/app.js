@@ -129,8 +129,9 @@ async function aktualizujMapu() {
     return;
   }
   if (moje !== poradi) return;
-  const prvni = !posledniStyl;
+  const stareIds = posledniStyl?.layers.map((l) => l.id).join();
   posledniStyl = styl;
+  const jineVrstvy = stareIds !== styl.layers.map((l) => l.id).join();
   const sDaty = pridejData(kopie(styl), stav.nahled);
   if (!mapa) {
     mapa = new maplibregl.Map({
@@ -147,7 +148,9 @@ async function aktualizujMapu() {
   } else {
     mapa.setStyle(sDaty, { diff: true });
   }
-  if (prvni) vykresliPanel();
+  // Panel se překreslí, jen když přibyla nebo ubyla vrstva (ne při tažení posuvníku).
+  if (jineVrstvy) vykresliPanel();
+  window.mapovyEditor = { mapa, stav, styl: () => posledniStyl };
 }
 
 function infoMapy() {
@@ -246,7 +249,7 @@ function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null } = {}) {
   function vykresli() {
     const o = odstiny(zvolena);
     const k = pozadi ? kontrast(zvolena, pozadi) : null;
-    box.replaceChildren(
+    box.replaceChildren(...[
       h('h3', {}, 'Paleta ČT'),
       h('div', { class: 'paleta' }, PALETA_CT.map((b) => vzorek(b))),
       h('h3', {}, 'Světlejší odstíny'),
@@ -268,13 +271,13 @@ function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null } = {}) {
         })),
       k ? h('div', { class: `kontrast${k < 3 ? ' spatny' : ''}` },
         `Kontrast vůči podkladu ${k.toFixed(1).replace('.', ',')} : 1 – ${k >= 4.5 ? 'dobře čitelné' : k >= 3 ? 'čitelné u většího písma' : 'špatně čitelné'}`) : null,
-    );
+    ].filter(Boolean));
   }
   vykresli();
   box.hidden = false;
   const r = kotva.getBoundingClientRect();
   const vyska = box.offsetHeight;
-  box.style.left = `${Math.min(r.left, innerWidth - 316)}px`;
+  box.style.left = `${Math.min(r.left, innerWidth - 348)}px`;
   box.style.top = `${Math.max(8, Math.min(r.bottom + 6, innerHeight - vyska - 8))}px`;
 
   const venku = (e) => { if (!box.contains(e.target) && e.target !== kotva && !kotva.contains(e.target)) zavri(); };

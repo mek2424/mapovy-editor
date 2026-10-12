@@ -139,7 +139,7 @@ h2:first-child { margin-top: 0; }
 
 /* Výběr barvy */
 .vybirac {
-  position: fixed; z-index: 50; width: 300px; background: var(--bila); border-radius: 10px;
+  position: fixed; z-index: 50; width: 332px; background: var(--bila); border-radius: 10px;
   box-shadow: var(--stin); padding: 12px; border: 1px solid var(--cara);
 }
 .vybirac h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 10px 0 6px; }
