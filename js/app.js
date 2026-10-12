@@ -175,7 +175,7 @@ async function aktualizujMapu() {
   const moje = ++poradi;
   let styl;
   try {
-    styl = await sestavStyl(stav.recept, { nazev: stav.meta.nazev });
+    styl = await sestavStyl(stav.recept, { nazev: stav.meta.nazev, zvyraznitVyber: vyberovyRezim });
   } catch (e) {
     hlaska(`Styl se nepodařilo sestavit: ${e.message}`, true);
     return;
@@ -228,7 +228,16 @@ function klikNaMapu(e) {
   const f = mapa.queryRenderedFeatures(pole, { layers: vrstvy.filter((id) => mapa.getLayer(id)) });
   const s = f.find((x) => nazevPrvku(x.properties));
   if (!s) { hlaska('Tady žádný název není. Klikni přímo na text.'); return; }
-  vybranyNazev = nazevPrvku(s.properties);
+  const nazev = nazevPrvku(s.properties);
+  if (stav.recept.popisky.jenVybrane) {
+    const zapnout = !stav.recept.popisky.vybraneNazvy.includes(nazev);
+    zmena((st) => {
+      const v = st.recept.popisky.vybraneNazvy;
+      if (zapnout) v.push(nazev); else v.splice(v.indexOf(nazev), 1);
+    });
+    hlaska(zapnout ? `Zobrazí se: ${nazev}` : `Skryto: ${nazev}`);
+  }
+  vybranyNazev = nazev;
   vykresliVyberNazvu();
 }
 
@@ -269,6 +278,7 @@ function vykresliVyberNazvu() {
 
 function nastavVyberovyRezim(zap) {
   vyberovyRezim = zap;
+  naplanujMapu();
   document.querySelector('.nahled').classList.toggle('vyberovy-rezim', zap);
   if (!zap) { vybranyNazev = null; }
   vykresliVyberNazvu();
@@ -1110,6 +1120,26 @@ function panelPopisky() {
       h('input', { type: 'checkbox', checked: vyberovyRezim, onchange: (e) => nastavVyberovyRezim(e.target.checked) }),
       'Vybírat názvy kliknutím v mapě'),
     h('div', { class: 'poznamka' }, 'Klikni na název v mapě a můžeš ho skrýt nebo posunout. Hodí se, když název zakrývá data.'),
+    h('h2', {}, 'Zobrazit jen vybrané názvy'),
+    h('label', { class: 'prepinac' },
+      h('input', {
+        type: 'checkbox', checked: pop.jenVybrane, onchange: (e) => {
+          zmena((s) => { s.recept.popisky.jenVybrane = e.target.checked; });
+          if (e.target.checked && !vyberovyRezim) nastavVyberovyRezim(true);
+        },
+      }),
+      'Ukázat jen názvy, na které kliknu'),
+    pop.jenVybrane ? [
+      h('div', { class: 'poznamka' }, vyberovyRezim
+        ? 'Klikáním na názvy v mapě je zapínáš a vypínáš. Nevybrané jsou teď bledé, aby se na ně dalo kliknout – ve staženém stylu nebudou vůbec.'
+        : 'Zapni „Vybírat názvy kliknutím v mapě“ a klikej na názvy, které chceš ukázat.'),
+      pop.vybraneNazvy.length
+        ? h('div', { class: 'vybrane-oblasti' }, pop.vybraneNazvy.map((n) => h('span', { class: 'stitek' }, n,
+          h('button', { title: 'Skrýt', onclick: () => zmena((s) => { s.recept.popisky.vybraneNazvy = s.recept.popisky.vybraneNazvy.filter((x) => x !== n); }) }, '×'))))
+        : h('p', { class: 'poznamka' }, 'Zatím není vybraný žádný název – mapa bude bez popisků.'),
+      pop.vybraneNazvy.length ? h('div', { class: 'tlacitka' },
+        h('button', { class: 'tl tl-male tl-nebezpecne', onclick: () => zmena((s) => { s.recept.popisky.vybraneNazvy = []; }) }, 'Vymazat výběr')) : null,
+    ] : null,
     h('h2', {}, `Skryté názvy (${pop.skryteNazvy.length})`),
     pop.skryteNazvy.length ? pop.skryteNazvy.map((n) => h('div', { class: 'radek' }, h('span', { class: 'popis' }, n),
       h('button', { class: 'tl tl-male', onclick: () => zmena((s) => { s.recept.popisky.skryteNazvy = s.recept.popisky.skryteNazvy.filter((x) => x !== n); }) }, 'Zobrazit')))

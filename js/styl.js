@@ -36,7 +36,7 @@ export async function nactiZaklad(id) {
 }
 
 export function prazdnyRecept(zaklad = 'liberty') {
-  return { verze: 1, zaklad, vrstvy: {}, pridane: [], popisky: { skryteNazvy: [], posuny: {} }, mapa: { glob: false }, maska: prazdnaMaska() };
+  return { verze: 1, zaklad, vrstvy: {}, pridane: [], popisky: { skryteNazvy: [], posuny: {}, jenVybrane: false, vybraneNazvy: [] }, mapa: { glob: false }, maska: prazdnaMaska() };
 }
 
 export function prazdnaMaska() {
@@ -141,21 +141,35 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
     };
   }
 
-  // Skryté a posunuté jednotlivé názvy (nastavují se klikem v náhledu).
+  // Skryté, posunuté a „jen vybrané“ jednotlivé názvy (nastavují se klikem v náhledu).
   const skryte = recept.popisky.skryteNazvy || [];
   const posuny = recept.popisky.posuny || {};
   const posunuteNazvy = Object.keys(posuny);
+  const jenVybrane = !!recept.popisky.jenVybrane;
+  const vybrane = recept.popisky.vybraneNazvy || [];
+  const pridat = (l, podminka) => { l.filter = l.filter ? ['all', l.filter, podminka] : podminka; };
   for (const l of vrstvy) {
     if (l.type !== 'symbol' || !l.layout?.['text-field']) continue;
-    if (obsahujeNazev(l.layout['text-field'])) l.layout['text-field'] = kopie(CESKY_NAZEV);
-    else continue;
-    if (skryte.length) {
-      const podminka = ['!', ['in', CESKY_NAZEV, ['literal', skryte]]];
-      l.filter = l.filter ? ['all', l.filter, podminka] : podminka;
+    let nazev;
+    if (obsahujeNazev(l.layout['text-field'])) {
+      l.layout['text-field'] = kopie(CESKY_NAZEV);
+      nazev = CESKY_NAZEV;
+    } else if (JSON.stringify(l.layout['text-field']) === '["get","nazev"]') {
+      nazev = ['get', 'nazev'];
+    } else continue;
+    if (skryte.length) pridat(l, ['!', ['in', nazev, ['literal', skryte]]]);
+    if (jenVybrane) {
+      const jeVybrany = ['in', nazev, ['literal', vybrane]];
+      if (moznosti.zvyraznitVyber) {
+        // Při výběru v náhledu zůstanou vidět i ostatní názvy, jen bledé, aby se na ně dalo kliknout.
+        l.paint = l.paint || {};
+        l.paint['text-opacity'] = ['case', jeVybrany, 1, 0.3];
+        l.paint['icon-opacity'] = ['case', jeVybrany, 1, 0.3];
+      } else pridat(l, jeVybrany);
     }
     if (posunuteNazvy.length && !jeVyrazSeZoomem(l.layout['text-offset'])) {
       const vychozi = l.layout['text-offset'] ?? [0, 0];
-      const vyraz = ['match', CESKY_NAZEV];
+      const vyraz = ['match', nazev];
       for (const n of posunuteNazvy) {
         const [dx, dy] = posuny[n];
         const z = Array.isArray(vychozi) && typeof vychozi[0] === 'number' ? vychozi : [0, 0];
