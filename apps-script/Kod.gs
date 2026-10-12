@@ -13,10 +13,14 @@
  *     Spustit jako: Já, Kdo má přístup: Kdokoli → Nasadit, povolit přístup.
  *  4. Adresu webové aplikace (končí /exec) vložit do editoru v Nastavení.
  *
+ *
+ * Aktualizace kódu: vložit novou verzi, uložit a pak Nasadit → Spravovat nasazení →
+ * tužka u stávajícího nasazení → Verze: Nová verze → Nasadit. Adresa /exec zůstane stejná.
+ *
  * Heslo je jen ve vlastnostech skriptu, v kódu ani na GitHubu není.
  */
 
-const SLOUPCE = ['id', 'nazev', 'popis', 'zaklad', 'nastaveni', 'autor', 'vytvoreno', 'upraveno'];
+const SLOUPCE = ['id', 'nazev', 'popis', 'zaklad', 'nastaveni', 'autor', 'upravil', 'vytvoreno', 'upraveno', 'nahled'];
 const MAX_BUNKA = 49000;
 
 function doGet() {
@@ -57,8 +61,16 @@ function sesit() {
 
 function list() {
   const sh = sesit().getSheets()[0];
-  if (sh.getLastRow() === 0) sh.appendRow(SLOUPCE);
+  if (sh.getLastRow() === 0) { sh.appendRow(SLOUPCE); return sh; }
+  // Starší tabulka: chybějící sloupce (upravil, nahled) se doplní na konec záhlaví.
+  const hlavicka = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  const chybi = SLOUPCE.filter(function (k) { return hlavicka.indexOf(k) < 0; });
+  if (chybi.length) sh.getRange(1, hlavicka.length + 1, 1, chybi.length).setValues([chybi]);
   return sh;
+}
+
+function hlavicka(sh) {
+  return sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
 }
 
 function nactiVse() {
@@ -74,18 +86,27 @@ function nactiVse() {
 }
 
 function uloz(s) {
-  if (!s || !s.id) throw new Error('Šablona nemá id.');
+  if (!s || !s.id) throw new Error('Mapa nemá id.');
   const sh = list();
-  const radek = SLOUPCE.map(function (k) {
-    const v = k === 'nastaveni' ? JSON.stringify(s.nastaveni) : (s[k] == null ? '' : String(s[k]));
-    if (v.length > MAX_BUNKA) throw new Error('Šablona je příliš velká pro jednu buňku tabulky.');
+  const sloupce = hlavicka(sh);
+  const radek = sloupce.map(function (k) {
+    if (SLOUPCE.indexOf(k) < 0) return null; // cizí sloupec necháme, jak je
+    let v = k === 'nastaveni' ? JSON.stringify(s.nastaveni) : (s[k] == null ? '' : String(s[k]));
+    if (v.length > MAX_BUNKA) {
+      if (k === 'nahled') v = ''; // příliš velký náhled raději vynecháme
+      else throw new Error('Mapa je příliš velká pro jednu buňku tabulky.');
+    }
     return v;
   });
   const ids = sh.getRange(1, 1, Math.max(sh.getLastRow(), 1), 1).getValues().map(function (r) { return String(r[0]); });
   const i = ids.indexOf(String(s.id));
-  const cil = i >= 1 ? sh.getRange(i + 1, 1, 1, SLOUPCE.length) : sh.getRange(sh.getLastRow() + 1, 1, 1, SLOUPCE.length);
-  cil.setNumberFormat('@');
-  cil.setValues([radek]);
+  const cislo = i >= 1 ? i + 1 : sh.getLastRow() + 1;
+  radek.forEach(function (v, j) {
+    if (v === null) return;
+    const bunka = sh.getRange(cislo, j + 1);
+    bunka.setNumberFormat('@');
+    bunka.setValue(v);
+  });
 }
 
 function smaz(id) {

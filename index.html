@@ -11,13 +11,18 @@
 <body>
   <header class="lista">
     <div class="znacka">Mapový editor</div>
+    <button id="mapy" class="tl tl-mapy" title="Týmové mapy a nová mapa (Ctrl+O)">
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+      Mapy
+    </button>
     <input id="nazev-sablony" class="nazev" placeholder="Název mapy" aria-label="Název mapy">
     <span id="stav-ulozeni" class="stav-ulozeni"></span>
     <div class="akce">
+      <button id="stav-tabulky" class="tl kontrolka" title="Týmová tabulka – kliknutím načíst mapy znovu"><span class="tecka"></span>Tabulka</button>
       <button id="zpet" class="tl tl-ikona" title="Zpět (Ctrl+Z)" aria-label="Zpět">↶</button>
       <button id="znovu" class="tl tl-ikona" title="Znovu (Ctrl+Y)" aria-label="Znovu">↷</button>
       <button id="historie" class="tl" title="Historie úprav – vrátit o více kroků">Historie</button>
-      <button id="ulozit" class="tl">Uložit šablonu</button>
+      <button id="ulozit" class="tl tl-ulozit" title="Uložit mapu (Ctrl+S)">Uložit</button>
       <button id="stahnout" class="tl tl-hlavni">Stáhnout style.json</button>
     </div>
   </header>
@@ -25,8 +30,7 @@
   <main class="plocha">
     <aside class="panel">
       <nav class="karty" role="tablist">
-        <button data-karta="sablony" class="aktivni">Šablony</button>
-        <button data-karta="barvy">Barvy</button>
+        <button data-karta="barvy" class="aktivni">Barvy</button>
         <button data-karta="vrstvy">Vrstvy</button>
         <button data-karta="maska">Maska</button>
         <button data-karta="popisky">Popisky</button>
@@ -43,6 +47,9 @@
     </section>
   </main>
 
+  <div id="okno-map" class="zavoj" hidden></div>
+  <div id="male-okno" class="zavoj" hidden></div>
+  <div id="uvod" class="uvod" hidden></div>
   <div id="vybirac" class="vybirac" hidden></div>
   <div id="hlaska" class="hlaska" role="status" aria-live="polite"></div>
   <input type="file" id="soubor" accept=".json,application/json" hidden>
