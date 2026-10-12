@@ -190,3 +190,14 @@ h2:first-child { margin-top: 0; }
 .nahled-schematu { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; height: 26px; border-radius: 5px; overflow: hidden; border: 1px solid rgba(0,0,0,0.12); }
 .jmeno-schematu { font-size: 12px; font-weight: 600; }
 .tl-zapnuto { background: var(--modra-svetla); border-color: var(--modra); color: var(--modra); }
+
+/* Maska */
+.seznam-voleb { max-height: 220px; overflow-y: auto; border: 1px solid var(--cara); border-radius: 6px; margin: 6px 0; }
+.volba { display: flex; justify-content: space-between; gap: 8px; width: 100%; border: 0; border-bottom: 1px solid var(--plocha); background: none; padding: 6px 10px; cursor: pointer; text-align: left; }
+.volba:hover { background: var(--modra-svetla); }
+.volba small { color: var(--text-2); }
+.vybrane-oblasti { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.stitek { display: inline-flex; align-items: center; gap: 4px; background: var(--modra); color: #fff; border-radius: 14px; padding: 3px 4px 3px 10px; font-size: 12px; }
+.stitek button { border: 0; background: rgba(255,255,255,0.2); color: #fff; border-radius: 50%; width: 18px; height: 18px; line-height: 1; cursor: pointer; padding: 0; }
+.vzor-car { width: 110px; padding: 4px 6px; border: 1px solid var(--cara); border-radius: 5px; font-family: ui-monospace, monospace; font-size: 12px; }
+.barva-polozka .radek select { font-size: 12px; padding: 2px 4px; }

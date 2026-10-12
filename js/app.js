@@ -1,4 +1,4 @@
-import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie } from './styl.js';
+import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie, polygonyMasky, hraniceGeometrie } from './styl.js';
 import { PALETA_CT, SKALY, odstiny, ladici, hex, kontrast } from './barvy.js';
 import { SKUPINY, skupina, nazevVrstvy, BARVY_VRSTVY, KRYTI_VRSTVY, POPISY_VLASTNOSTI } from './vrstvy.js';
 import { DATA, pridejData, vlastniData, nastavVlastniData, prectiSoubor, hraniceDat } from './data.js';
@@ -451,7 +451,7 @@ function vykresliPanel() {
   document.querySelectorAll('.karty button').forEach((b) => b.classList.toggle('aktivni', b.dataset.karta === karta));
   const obsah = $('#obsah-panelu');
   const scroll = obsah.scrollTop;
-  const fn = { sablony: panelSablony, barvy: panelBarvy, vrstvy: panelVrstvy, popisky: panelPopisky, data: panelData, nastaveni: panelNastaveni }[karta];
+  const fn = { sablony: panelSablony, barvy: panelBarvy, vrstvy: panelVrstvy, maska: panelMaska, popisky: panelPopisky, data: panelData, nastaveni: panelNastaveni }[karta];
   obsah.replaceChildren(...[fn()].flat(Infinity).filter((x) => x != null && x !== false));
   obsah.scrollTop = scroll;
   vykresliVyberNazvu();
@@ -646,8 +646,14 @@ function panelBarvy() {
     const vzorek = vzorekBarvy(hodnota ?? '#000000', (e) => otevriVybirac(e.currentTarget, typeof hodnota === 'string' ? hodnota : '#001464',
       (b, klic) => zmena(() => vrstvy.forEach((l) => nastav(l.id, 'paint', r.vl, b)), { klic, prekreslit: false }),
       { pozadi: r.vl === 'text-color' ? barvaPevniny() : null }));
+    const caryVrstvy = vrstvy.filter((l) => l.type === 'line');
+    const carky = caryVrstvy.length && r.vl === 'line-color'
+      ? h('div', { class: 'radek' }, ...vyberCarkovani(stav.recept.vrstvy[caryVrstvy[0].id]?.paint && 'line-dasharray' in stav.recept.vrstvy[caryVrstvy[0].id].paint
+        ? stav.recept.vrstvy[caryVrstvy[0].id].paint['line-dasharray'] : undefined,
+      (v) => zmena(() => caryVrstvy.filter((l) => l.id !== 'boundary_disputed').forEach((l) => nastavCarkovani(l.id, v)))))
+      : null;
     return h('div', { class: 'barva-polozka' }, vzorek,
-      h('div', { class: 'popis' }, r.nazev,
+      h('div', { class: 'popis' }, r.nazev, carky,
         h('div', {}, h('code', {}, typeof hodnota === 'string' ? hodnota : 'mění se s přiblížením'),
           !jednotna ? h('code', {}, ' · vrstvy se liší') : null,
           !viditelne.length ? h('code', {}, ' · skryté') : null)));
@@ -747,7 +753,47 @@ const UKOTVENI = [
   ['right', 'Text vlevo od bodu'], ['center', 'Text přímo na bodu'], ['bottom-left', 'Vpravo nahoře'],
   ['bottom-right', 'Vlevo nahoře'], ['top-left', 'Vpravo dole'], ['top-right', 'Vlevo dole'],
 ];
-const CARKOVANI = [['', 'Výchozí'], ['plna', 'Plná'], ['3,2', 'Čárkovaná'], ['1,2', 'Tečkovaná'], ['4,2,1,2', 'Čerchovaná']];
+const CARKOVANI = [
+  ['', 'Výchozí'], ['plna', 'Plná'], ['4,2', 'Čárkovaná'], ['8,3', 'Dlouhé čárky'], ['2,2', 'Krátké čárky'],
+  ['0,2', 'Tečkovaná – kulaté tečky'], ['1,2', 'Tečkovaná – hranaté tečky'], ['4,2,1,2', 'Čerchovaná'],
+  ['4,2,1,2,1,2', 'Dvojitě čerchovaná'], ['6,2,2,2', 'Dlouhá a krátká čárka'], ['0,2,4,2', 'Tečka a čárka'], ['vlastni', 'Vlastní vzor…'],
+];
+
+// Výběr stylu čáry: plná, čárkovaná, tečkovaná, kombinovaná nebo vlastní vzor.
+// aktualni: pole čísel, null = plná, undefined = výchozí. zapis(hodnota) – stejné kódování.
+function vyberCarkovani(aktualni, zapis, { sVychozi = true } = {}) {
+  const klic = aktualni === undefined ? '' : aktualni === null ? 'plna' : aktualni.join(',');
+  const znamy = CARKOVANI.some(([v]) => v === klic);
+  const vlastniPole = h('input', {
+    type: 'text', class: 'vzor-car', placeholder: 'např. 5 2 1 2', value: znamy ? '' : (aktualni || []).join(' '),
+    title: 'Délky čárek a mezer v násobcích šířky čáry, oddělené mezerou',
+    onchange: (e) => {
+      const cisla = e.target.value.trim().split(/[\s,;]+/).map((x) => parseFloat(x.replace(',', '.'))).filter((x) => Number.isFinite(x) && x >= 0);
+      if (cisla.length >= 2) zapis(cisla); else hlaska('Zadej aspoň dvě čísla: délku čárky a mezery.', true);
+    },
+  });
+  const vyber = h('select', {
+    onchange: (e) => {
+      const v = e.target.value;
+      if (v === 'vlastni') { vlastniPole.hidden = false; vlastniPole.focus(); return; }
+      zapis(v === '' ? undefined : v === 'plna' ? null : v.split(',').map(Number));
+    },
+  }, CARKOVANI.filter(([v]) => sVychozi || v !== '').map(([v, t]) => h('option', { value: v, selected: znamy ? v === klic : v === 'vlastni' }, t)));
+  vlastniPole.hidden = znamy;
+  return [vyber, vlastniPole];
+}
+
+// Zápis stylu čáry do vrstvy (tečky potřebují zakulacené konce).
+function nastavCarkovani(id, v) {
+  if (v === undefined) {
+    zrusNastaveni(id, 'paint', 'line-dasharray');
+    zrusNastaveni(id, 'layout', 'line-cap');
+    return;
+  }
+  nastav(id, 'paint', 'line-dasharray', v);
+  if (v && v[0] === 0) nastav(id, 'layout', 'line-cap', 'round');
+  else zrusNastaveni(id, 'layout', 'line-cap');
+}
 
 function upravyVrstvy(l, pridana) {
   const u = stav.recept.vrstvy[l.id] || {};
@@ -780,15 +826,10 @@ function upravyVrstvy(l, pridana) {
       min: 0.25, max: 5, krok: 0.05, format: (x) => `× ${cislo(x)}`, klic: k('sirka'),
       nastav: (x) => { upravy(l.id).sirka = x === 1 ? undefined : x; },
     }));
-    const dash = u.paint && 'line-dasharray' in u.paint ? (u.paint['line-dasharray'] ? u.paint['line-dasharray'].join(',') : 'plna') : '';
+    const dash = u.paint && 'line-dasharray' in u.paint ? u.paint['line-dasharray'] : undefined;
     prvky.push(h('div', { class: 'radek' }, h('label', {}, 'Styl čáry'),
-      h('select', {
-        onchange: (e) => zmena(() => {
-          const v = e.target.value;
-          if (!v) zrusNastaveni(l.id, 'paint', 'line-dasharray');
-          else nastav(l.id, 'paint', 'line-dasharray', v === 'plna' ? null : v.split(',').map(Number));
-        }),
-      }, CARKOVANI.map(([v, t]) => h('option', { value: v, selected: v === dash }, t)))));
+      ...vyberCarkovani(dash, (v) => zmena(() => nastavCarkovani(l.id, v)))));
+    prvky.push(h('div', { class: 'poznamka' }, 'Vlastní vzor: délky čárek a mezer v násobcích šířky čáry, např. „6 2 1 2“. Nula znamená tečku.'));
   }
   if (l.type === 'circle') {
     prvky.push(posuvnik('Velikost bodu', u.sirka || 1, {
@@ -877,6 +918,130 @@ function upravyVrstvy(l, pridana) {
     }, 'Vrátit vzhled podkladu') : null,
     pridana ? h('button', { class: 'tl tl-male tl-nebezpecne', onclick: () => odeberVlastni(l.id) }, 'Odebrat vrstvu') : null));
   return prvky;
+}
+
+// ---- Maska
+const maskaUI = { staty: null, hledatStat: '', stat: '', regiony: null, hledatRegion: '' };
+
+async function nactiJsonDat(cesta) {
+  const r = await fetch(cesta);
+  if (!r.ok) throw new Error(`Nepodařilo se načíst ${cesta}`);
+  return r.json();
+}
+
+async function priblizNaMasku() {
+  try {
+    const polys = await polygonyMasky(stav.recept.maska);
+    if (!polys.length || !mapa) return;
+    const [x1, y1, x2, y2] = hraniceGeometrie(polys);
+    mapa.fitBounds([[x1, y1], [x2, y2]], { padding: 40, duration: 600 });
+  } catch (e) { hlaska(e.message, true); }
+}
+
+function pridejOblast(o) {
+  zmena((s) => {
+    if (s.recept.maska.oblasti.some((x) => x.typ === o.typ && x.id === o.id)) return;
+    s.recept.maska.oblasti.push(o);
+  });
+  setTimeout(priblizNaMasku, 300);
+}
+
+function seznamVolby(polozky, hledat, naVyber) {
+  const q = hledat.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const bezDiakr = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const vysledek = polozky.filter((x) => !q || bezDiakr(x.text).includes(q)).slice(0, q ? 40 : 12);
+  return h('div', { class: 'seznam-voleb' },
+    vysledek.map((x) => h('button', { class: 'volba', onclick: () => naVyber(x) }, x.text, x.pozn ? h('small', {}, x.pozn) : null)),
+    !vysledek.length ? h('div', { class: 'poznamka' }, 'Nic nenalezeno.') : null);
+}
+
+function panelMaska() {
+  const m = stav.recept.maska;
+  if (!maskaUI.staty) {
+    nactiJsonDat('data/oblasti/staty.json').then((x) => { maskaUI.staty = x; if (karta === 'maska') vykresliPanel(); })
+      .catch((e) => hlaska(e.message, true));
+  }
+  const staty = maskaUI.staty || [];
+  const nastavMasku = (fn, prekreslit = true) => zmena((s) => fn(s.recept.maska), { klic: prekreslit ? null : 'maska', prekreslit });
+
+  const hledatStat = h('input', {
+    class: 'pole', placeholder: 'Hledat stát…', value: maskaUI.hledatStat,
+    oninput: (e) => { maskaUI.hledatStat = e.target.value; obnovStaty(); },
+  });
+  const statyBox = h('div');
+  const obnovStaty = () => statyBox.replaceChildren(seznamVolby(
+    staty.map((x) => ({ text: x.nazev, pozn: x.nazev !== x.en ? x.en : '', data: x })), maskaUI.hledatStat,
+    (v) => pridejOblast({ typ: 'stat', id: v.data.id, nazev: v.data.nazev }),
+  ));
+  obnovStaty();
+
+  const vyberStatu = h('select', {
+    class: 'pole', onchange: (e) => {
+      maskaUI.stat = e.target.value; maskaUI.regiony = null; maskaUI.hledatRegion = '';
+      if (maskaUI.stat) {
+        nactiJsonDat(`data/oblasti/regiony/${maskaUI.stat}.json`).then((x) => {
+          maskaUI.regiony = x.features.map((f) => f.properties).sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+          vykresliPanel();
+        }).catch((er) => hlaska(er.message, true));
+      }
+      vykresliPanel();
+    },
+  }, h('option', { value: '' }, '— vyber stát —'),
+  staty.filter((x) => x.regiony).map((x) => h('option', { value: x.id, selected: x.id === maskaUI.stat }, `${x.nazev} (${x.regiony})`)));
+  const nazevStatu = staty.find((x) => x.id === maskaUI.stat)?.nazev || '';
+  const hledatRegion = h('input', {
+    class: 'pole', placeholder: 'Hledat region…', value: maskaUI.hledatRegion,
+    oninput: (e) => { maskaUI.hledatRegion = e.target.value; obnovRegiony(); },
+  });
+  const regionyBox = h('div');
+  const obnovRegiony = () => regionyBox.replaceChildren(maskaUI.regiony ? seznamVolby(
+    maskaUI.regiony.map((x) => ({ text: x.nazev, pozn: x.typ, data: x })), maskaUI.hledatRegion,
+    (v) => pridejOblast({ typ: 'region', stat: maskaUI.stat, id: v.data.id, nazev: `${v.data.nazev} (${nazevStatu})` }),
+  ) : maskaUI.stat ? h('p', { class: 'poznamka' }, 'Načítám…') : '');
+  obnovRegiony();
+
+  return [
+    h('h2', {}, 'Ořezová maska'),
+    h('div', { class: 'poznamka' }, 'Mapa se ukáže jen ve vybraných oblastech, okolí zakryje maska. Popisky mimo oblast se skryjí. Data ve Flourishi leží nad podkladem, takže je maska neořízne.'),
+    m.oblasti.length
+      ? h('div', { class: 'vybrane-oblasti' }, m.oblasti.map((o, i) => h('span', { class: 'stitek' }, o.nazev || o.id,
+        h('button', { title: 'Odebrat', onclick: () => zmena((s) => { s.recept.maska.oblasti.splice(i, 1); }) }, '×'))))
+      : h('p', { class: 'poznamka' }, 'Zatím není vybraná žádná oblast – maska je vypnutá.'),
+    m.oblasti.length ? h('div', { class: 'tlacitka' },
+      h('button', { class: 'tl tl-male', onclick: priblizNaMasku }, 'Přiblížit na oblast'),
+      h('button', { class: 'tl tl-male tl-nebezpecne', onclick: () => zmena((s) => { s.recept.maska.oblasti = []; }) }, 'Zrušit masku')) : null,
+    h('h2', {}, 'Přidat stát'),
+    hledatStat, statyBox,
+    h('h2', {}, 'Přidat kraj nebo region'),
+    vyberStatu,
+    maskaUI.stat ? hledatRegion : null,
+    regionyBox,
+    h('div', { class: 'poznamka' }, 'Můžeš vybrat víc oblastí najednou, třeba dva kraje nebo Česko a Slovensko. Hranice: Natural Earth, názvy regionů jsou většinou v místním jazyce nebo anglicky.'),
+    h('h2', {}, 'Vzhled masky'),
+    h('div', { class: 'radek' }, h('span', { class: 'popis' }, 'Barva okolí'),
+      vzorekBarvy(m.barva, (e) => otevriVybirac(e.currentTarget, m.barva, (b, klic) => zmena((s) => { s.recept.maska.barva = b; }, { klic, prekreslit: false })))),
+    posuvnik('Krytí okolí', m.kryti, {
+      min: 0, max: 1, krok: 0.05, format: (x) => `${Math.round(x * 100)} %`, klic: 'maska-kryti',
+      nastav: (x) => { stav.recept.maska.kryti = x; },
+    }),
+    h('label', { class: 'prepinac' },
+      h('input', { type: 'checkbox', checked: m.skrytPopisky, onchange: (e) => nastavMasku((x) => { x.skrytPopisky = e.target.checked; }) }),
+      'Skrýt popisky mimo oblast'),
+    h('h2', {}, 'Obrys oblasti'),
+    h('label', { class: 'prepinac' },
+      h('input', { type: 'checkbox', checked: m.obrys.zap, onchange: (e) => nastavMasku((x) => { x.obrys.zap = e.target.checked; }) }),
+      'Zobrazit obrys'),
+    m.obrys.zap ? [
+      h('div', { class: 'radek' }, h('span', { class: 'popis' }, 'Barva obrysu'),
+        vzorekBarvy(m.obrys.barva, (e) => otevriVybirac(e.currentTarget, m.obrys.barva, (b, klic) => zmena((s) => { s.recept.maska.obrys.barva = b; }, { klic, prekreslit: false })))),
+      posuvnik('Šířka obrysu', m.obrys.sirka, {
+        min: 0.25, max: 6, krok: 0.25, format: (x) => `${cislo(x)} px`, klic: 'maska-sirka',
+        nastav: (x) => { stav.recept.maska.obrys.sirka = x; },
+      }),
+      h('div', { class: 'radek' }, h('label', {}, 'Styl čáry'),
+        ...vyberCarkovani(m.obrys.carky, (v) => nastavMasku((x) => { x.obrys.carky = v ?? null; }), { sVychozi: false })),
+    ] : null,
+  ];
 }
 
 // ---- Popisky
