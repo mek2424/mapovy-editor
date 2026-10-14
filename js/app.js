@@ -1,4 +1,4 @@
-import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie, polygonyMasky, hraniceGeometrie } from './styl.js';
+import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie, polygonyMasky, hraniceGeometrie, zakladNazvuPrvku, vsechnaPrejmenovani } from './styl.js';
 import { PALETA_CT, SKALY, odstiny, ladici, hex, kontrast, smichej } from './barvy.js';
 import { SKUPINY, skupina, nazevVrstvy, BARVY_VRSTVY, KRYTI_VRSTVY, POPISY_VLASTNOSTI } from './vrstvy.js';
 import { DATA, pridejData, vlastniData, nastavVlastniData, prectiSoubor, hraniceDat } from './data.js';
@@ -117,10 +117,21 @@ function poZmene(prekreslit = true) {
 }
 
 // Otevře v editoru jinou mapu jako jeden krok historie – Zpět vrátí tu předchozí.
-function otevriVEditoru(meta, recept, { ulozena = true } = {}) {
+function otevriVEditoru(meta, recept, { ulozena = true, nahled = null } = {}) {
   meta = { ...meta, otevreno: Date.now() };
   if (ulozena) ulozeneVerze.set(meta.id || '', obsahMapy(meta, recept));
-  zmena((s) => { s.meta = meta; s.recept = recept; });
+  zmena((s) => { s.meta = meta; s.recept = recept; if (nahled) s.nahled = nahled; });
+}
+
+// Nový začátek: výchozí mapa, výchozí náhled i výřez. Jeden krok historie – Zpět vrátí předchozí stav.
+async function novyZacatek() {
+  zavriMapy();
+  if (vyberovyRezim) nastavVyberovyRezim(false);
+  const recept = await receptNoveMapy('liberty', 'svetla', false);
+  otevriVEditoru(novaMeta(), recept, { nahled: { ...VYCHOZI_NAHLED } });
+  karta = 'vrstvy';
+  mapa?.jumpTo({ center: [15.3, 49.8], zoom: 5.2, bearing: 0, pitch: 0 });
+  hlaska('Nový začátek: výchozí mapa a nastavení.', false, { akce: { text: 'Vrátit', fn: () => zpet(1) } });
 }
 
 function nactiSnimek(retezec) {
@@ -255,7 +266,7 @@ async function aktualizujMapu() {
   const moje = ++poradi;
   let styl;
   try {
-    styl = await sestavStyl(stav.recept, { nazev: stav.meta.nazev, zvyraznitVyber: vyberovyRezim });
+    styl = await sestavStyl(stav.recept, { nazev: stav.meta.nazev, zvyraznitVyber: vyberovyRezim, tymoveNazvy });
   } catch (e) {
     hlaska(`Styl se nepodařilo sestavit: ${e.message}`, true);
     return;
@@ -284,7 +295,7 @@ async function aktualizujMapu() {
   }
   // Panel se překreslí po změně (ne při tažení posuvníku) nebo když přibyla či ubyla vrstva.
   if (prekreslitPoStylu || jineVrstvy) { prekreslitPoStylu = false; vykresliPanel(); }
-  window.mapovyEditor = { mapa, stav, styl: () => posledniStyl };
+  window.mapovyEditor = { mapa, stav, styl: () => posledniStyl, prejmenovat: otevriPrejmenovani };
 }
 
 function infoMapy() {
@@ -299,8 +310,109 @@ function infoMapy() {
 
 // ---------------------------------------------------------------- výběr názvu v mapě
 
-function nazevPrvku(p) {
-  return p['name:cs'] || p['name:latin'] || p.name || p.nazev || null;
+// Klíč názvu = český název před přejmenováním (stejný, jaký používají filtry ve stylu).
+const nazevPrvku = (f) => zakladNazvuPrvku(f.properties || {}, f.layer);
+// Jak se název v mapě opravdu zobrazí (po přejmenování).
+const zobrazenyNazev = (n) => vsechnaPrejmenovani(stav.recept, tymoveNazvy)[n] || n;
+
+// ---- výchozí přejmenování pro celý tým: zvláštní řádek v týmové tabulce
+const ID_NAZVU = '_vychozi-nazvy';
+let tymoveNazvy = {};
+let radekTymovychNazvu = null;
+function nastavTymoveNazvy(nazvy, radek) {
+  const zmeneno = JSON.stringify(nazvy) !== JSON.stringify(tymoveNazvy);
+  tymoveNazvy = { ...nazvy };
+  radekTymovychNazvu = radek;
+  if (zmeneno) { prekreslitPoStylu = true; naplanujMapu(); }
+}
+async function ulozTymoveNazvy(nove, popis) {
+  const predtim = { ...tymoveNazvy };
+  const radek = {
+    id: ID_NAZVU, nazev: 'Výchozí názvy popisků (nemazat)', popis: 'Přejmenování popisků, které platí pro všechny mapy týmu',
+    zaklad: '', nastaveni: { prejmenovane: nove }, nahled: '',
+    autor: radekTymovychNazvu?.autor || '', vytvoreno: radekTymovychNazvu?.vytvoreno || null,
+  };
+  const s = await ul.ulozSablonu(radek);
+  nastavTymoveNazvy(nove, s);
+  vykresliPanel();
+  hlaska(popis, false, {
+    akce: {
+      text: 'Vrátit', fn: async () => {
+        try { const z = await ul.ulozSablonu({ ...radek, nastaveni: { prejmenovane: predtim } }); nastavTymoveNazvy(predtim, z); vykresliPanel(); hlaska('Výchozí názvy týmu jsou jako předtím.'); }
+        catch (e) { hlaska(`Vrácení se nepovedlo: ${e.message}`, true); }
+      },
+    },
+  });
+}
+
+// Okno přejmenování: jen v této mapě, nebo výchozí pro všechny mapy týmu.
+function otevriPrejmenovani(n) {
+  const vMape = stav.recept.popisky.prejmenovane?.[n];
+  const vTymu = tymoveNazvy[n];
+  const vKodu = vsechnaPrejmenovani({}, {})[n];
+  const pole = h('input', { id: 'prejmenovat-popisek', class: 'pole velke', value: vMape || vTymu || vKodu || n, autocomplete: 'off' });
+  let rozsah = vMape || !vTymu ? 'mapa' : 'tym';
+  const volba = (klic, nadpis, popis) => h('label', { class: 'volba-ctverec' },
+    h('input', { type: 'radio', name: 'rozsah-nazvu', checked: rozsah === klic, onchange: () => { rozsah = klic; } }),
+    h('span', { class: 'texty' }, h('strong', {}, nadpis), h('span', {}, popis)));
+  const tlacitka = [
+    {
+      text: 'Uložit', hlavni: true, fn: async () => {
+        const novy = pole.value.trim();
+        if (!novy) { pole.focus(); return false; }
+        if (rozsah === 'mapa') {
+          zmena((s) => {
+            const p = { ...(s.recept.popisky.prejmenovane || {}) };
+            if (novy === n || novy === (vTymu || vKodu)) delete p[n]; else p[n] = novy;
+            s.recept.popisky.prejmenovane = p;
+          });
+          hlaska(`„${n}“ se v této mapě zobrazí jako „${novy}“.`);
+          return true;
+        }
+        try {
+          const t = { ...tymoveNazvy };
+          if (novy === n || novy === vKodu) delete t[n]; else t[n] = novy;
+          // Přejmenování jen v mapě by výchozí název přebilo – zruší se.
+          if (vMape) zmena((s) => { const p = { ...s.recept.popisky.prejmenovane }; delete p[n]; s.recept.popisky.prejmenovane = p; });
+          await ulozTymoveNazvy(t, `„${n}“ se ve všech mapách týmu zobrazí jako „${novy}“.`);
+          return true;
+        } catch (e) { hlaska(`Uložení do týmové tabulky se nepovedlo: ${e.message}`, true); return false; }
+      },
+    },
+    vMape ? { text: 'Zrušit přejmenování v mapě', fn: () => { zmena((s) => { const p = { ...s.recept.popisky.prejmenovane }; delete p[n]; s.recept.popisky.prejmenovane = p; }); } } : null,
+    { text: 'Zavřít', vpravo: true, slabe: true },
+  ].filter(Boolean);
+  maleOkno('Přejmenovat popisek', [
+    h('div', { class: 'info-ulozeni' }, 'Původní název: ', h('strong', {}, n),
+      vTymu ? h('div', {}, `Výchozí pro tým: ${vTymu}`) : null,
+      vMape ? h('div', {}, `V této mapě: ${vMape}`) : null),
+    h('label', { class: 'popisek', for: 'prejmenovat-popisek' }, 'Zobrazit jako'), pole,
+    h('div', { class: 'popisek' }, 'Kde platí'),
+    volba('mapa', 'Jen v této mapě', 'Uloží se s mapou. Zpět ho vrátí.'),
+    volba('tym', 'Výchozí pro všechny mapy týmu', ul.jeNapojeno()
+      ? 'Uloží se hned do týmové tabulky a projeví se ve všech mapách, i v již uložených. Vrátit jde v hlášce nebo na kartě Názvy.'
+      : 'Editor není připojený k týmové tabulce – uloží se jen v tomto prohlížeči.'),
+  ], tlacitka);
+  setTimeout(() => pole.select(), 30);
+}
+
+// Puntík u jednotlivého názvu: null = podle druhu sídla, true = vždy, false = nikdy.
+function nastavPuntikNazvu(nazvy, hodnota) {
+  zmena((s) => {
+    const p = { ...(s.recept.popisky.puntiky || {}) };
+    for (const n of nazvy) { if (hodnota == null) delete p[n]; else p[n] = hodnota; }
+    s.recept.popisky.puntiky = p;
+  });
+}
+function prepinacPuntiku(nazvy, aktualni, { male = false } = {}) {
+  const volba = (hodnota, text, titulek) => h('button', {
+    class: `segment${aktualni === hodnota ? ' zvoleny' : ''}`, 'aria-pressed': String(aktualni === hodnota), title: titulek,
+    onclick: () => nastavPuntikNazvu(nazvy, hodnota),
+  }, text);
+  return h('div', { class: `segmenty${male ? ' male' : ''}`, role: 'group', 'aria-label': 'Puntík u názvu' },
+    volba(null, 'Podle druhu', 'Puntík podle nastavení druhu sídla'),
+    volba(true, '● Ano', 'Puntík vždy, i při velkém přiblížení'),
+    volba(false, 'Ne', 'Bez puntíku'));
 }
 
 function klikNaMapu(e) {
@@ -308,20 +420,22 @@ function klikNaMapu(e) {
   const vrstvy = posledniStyl.layers.filter((l) => l.type === 'symbol' && jeViditelna(l)).map((l) => l.id);
   const pole = [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]];
   const f = mapa.queryRenderedFeatures(pole, { layers: vrstvy.filter((id) => mapa.getLayer(id)) });
-  const s = f.find((x) => nazevPrvku(x.properties));
+  const s = f.find((x) => nazevPrvku(x));
   if (!s) { hlaska('Tady žádný název není. Klikni přímo na text.'); return; }
-  const nazev = nazevPrvku(s.properties);
+  const nazev = nazevPrvku(s);
   if (stav.recept.popisky.jenVybrane) {
     const zapnout = !stav.recept.popisky.vybraneNazvy.includes(nazev);
     zmena((st) => {
       const v = st.recept.popisky.vybraneNazvy;
       if (zapnout) v.push(nazev); else v.splice(v.indexOf(nazev), 1);
     });
-    hlaska(zapnout ? `Zobrazí se: ${nazev}` : `Skryto: ${nazev}`);
+    hlaska(zapnout ? `Zobrazí se: ${zobrazenyNazev(nazev)}` : `Skryto: ${zobrazenyNazev(nazev)}`);
   }
   vybranyNazev = nazev;
+  vybranyJeSidlo = s.layer?.id ? /^label_(city|town|village)/.test(s.layer.id) : false;
   vykresliVyberNazvu();
 }
+let vybranyJeSidlo = false;
 
 function vykresliVyberNazvu() {
   const box = $('#vyber-nazvu');
@@ -330,6 +444,7 @@ function vykresliVyberNazvu() {
   const pop = stav.recept.popisky;
   const posun = pop.posuny[n] || [0, 0];
   const skryty = pop.skryteNazvy.includes(n);
+  const zobrazeny = zobrazenyNazev(n);
   const posunout = (dx, dy) => zmena((s) => {
     const p = s.recept.popisky.posuny[n] || [0, 0];
     const nove = [Math.round((p[0] + dx) * 100) / 100, Math.round((p[1] + dy) * 100) / 100];
@@ -337,7 +452,8 @@ function vykresliVyberNazvu() {
     else s.recept.popisky.posuny[n] = nove;
   }, { klic: `posun-${n}` });
   box.replaceChildren(
-    h('strong', {}, n),
+    h('strong', {}, zobrazeny),
+    zobrazeny !== n ? h('div', { class: 'poznamka' }, `Původně: ${n}`) : null,
     h('div', { class: 'poznamka' }, skryty ? 'Název je skrytý.' : `Posun: ${posun[0]} / ${posun[1]} em`),
     h('div', { class: 'sipky' },
       h('span'), h('button', { class: 'tl', onclick: () => posunout(0, -0.2), title: 'Nahoru' }, '↑'), h('span'),
@@ -345,7 +461,9 @@ function vykresliVyberNazvu() {
       h('button', { class: 'tl', onclick: () => zmena((s) => { delete s.recept.popisky.posuny[n]; }), title: 'Zpět na místo' }, '•'),
       h('button', { class: 'tl', onclick: () => posunout(0.2, 0), title: 'Doprava' }, '→'),
       h('span'), h('button', { class: 'tl', onclick: () => posunout(0, 0.2), title: 'Dolů' }, '↓'), h('span')),
+    vybranyJeSidlo ? [h('div', { class: 'popisek-male' }, 'Puntík'), prepinacPuntiku([n], pop.puntiky?.[n] ?? null, { male: true })] : null,
     h('div', { class: 'tlacitka' },
+      h('button', { class: 'tl', onclick: () => otevriPrejmenovani(n) }, 'Přejmenovat…'),
       h('button', {
         class: 'tl', onclick: () => zmena((s) => {
           const l = s.recept.popisky.skryteNazvy;
@@ -353,10 +471,11 @@ function vykresliVyberNazvu() {
         }),
       }, skryty ? 'Znovu zobrazit' : 'Skrýt název'),
       h('button', { class: 'tl', onclick: () => { vybranyNazev = null; box.hidden = true; } }, 'Zavřít')),
-    h('div', { class: 'poznamka' }, 'Posun platí pro všechny výskyty tohoto názvu. Jednotka em = velikost písma.'),
+    h('div', { class: 'poznamka' }, 'Posun a puntík platí pro všechny výskyty tohoto názvu. Jednotka em = velikost písma.'),
   );
   box.hidden = false;
 }
+
 
 function nastavVyberovyRezim(zap) {
   vyberovyRezim = zap;
@@ -861,7 +980,9 @@ async function nactiSablony() {
   if (mapyUI.otevreno) vykresliMapy();
   try {
     const r = await ul.seznamSablon();
-    sablony = r.sablony;
+    const radekNazvu = r.sablony.find((x) => x.id === ID_NAZVU);
+    sablony = r.sablony.filter((x) => x.id !== ID_NAZVU);
+    nastavTymoveNazvy(radekNazvu ? (radekNazvu.nastaveni?.prejmenovane || {}) : {}, radekNazvu || null);
     zdrojSablon = r.zdroj;
     nastavKontrolku(r.zdroj === 'tabulka' ? 'ok' : 'chyba', r.zdroj === 'tabulka' ? 'Tabulka' : 'Jen prohlížeč');
   } catch (e) {
@@ -1093,7 +1214,7 @@ function obsahTymove() {
     h('footer', { class: 'okno-pata' },
       h('span', {}, zdrojSablon === 'prohlizec' ? 'Mapy jsou jen v tomto prohlížeči.' : 'Mapy jsou v soukromé týmové tabulce.'),
       sablony?.length ? h('button', {
-        class: 'odkaz', onclick: () => stahniSoubor('mapy-tymu.json', { typ: 'mapovy-editor-sablony', verze: 1, sablony }),
+        class: 'odkaz', onclick: () => stahniSoubor('mapy-tymu.json', { typ: 'mapovy-editor-sablony', verze: 1, sablony: radekTymovychNazvu ? [...sablony, radekTymovychNazvu] : sablony }),
       }, 'Stáhnout zálohu všech map') : null),
   ];
 }
@@ -1184,7 +1305,7 @@ function prejmenuj(s) {
 async function stahniStylMapy(s) {
   try {
     const recept = doplnRecept(kopie(s.nastaveni));
-    const styl = await sestavStyl(recept, { export: true, nazev: s.nazev || 'Mapa' });
+    const styl = await sestavStyl(recept, { export: true, nazev: s.nazev || 'Mapa', tymoveNazvy });
     const chyby = await overStyl(styl);
     if (chyby && chyby.length && !confirm(`Styl má ${chyby.length} chyb(y):\n\n${chyby.slice(0, 5).join('\n')}\n\nStáhnout přesto?`)) return;
     stahniSoubor(`${ul.noveId(s.nazev || 'mapa').replace(/-[a-z0-9]+$/, '')}.json`, styl, true);
@@ -1855,7 +1976,7 @@ function pridejOblast(o) {
 function seznamVolby(polozky, hledat, naVyber) {
   const q = hledat.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const bezDiakr = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const vysledek = polozky.filter((x) => !q || bezDiakr(x.text).includes(q)).slice(0, q ? 40 : 12);
+  const vysledek = polozky.filter((x) => !q || bezDiakr(x.hledat || x.text).includes(q)).slice(0, q ? 40 : 12);
   return h('div', { class: 'seznam-voleb' },
     vysledek.map((x) => h('button', { class: 'volba', onclick: () => naVyber(x) }, x.text, x.pozn ? h('small', {}, x.pozn) : null)),
     !vysledek.length ? h('div', { class: 'poznamka' }, 'Nic nenalezeno.') : null);
@@ -1864,7 +1985,7 @@ function seznamVolby(polozky, hledat, naVyber) {
 function panelMaska() {
   const m = stav.recept.maska;
   if (!maskaUI.staty) {
-    nactiJsonDat('data/oblasti/staty.json').then((x) => { maskaUI.staty = x; if (karta === 'maska') vykresliPanel(); })
+    nactiJsonDat('data/oblasti/staty.json').then((x) => { maskaUI.staty = x.sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs')); if (karta === 'maska') vykresliPanel(); })
       .catch((e) => hlaska(e.message, true));
   }
   const staty = maskaUI.staty || [];
@@ -1876,7 +1997,7 @@ function panelMaska() {
   });
   const statyBox = h('div');
   const obnovStaty = () => statyBox.replaceChildren(seznamVolby(
-    staty.map((x) => ({ text: x.nazev, pozn: x.nazev !== x.en ? x.en : '', data: x })), maskaUI.hledatStat,
+    staty.map((x) => ({ text: x.nazev, hledat: `${x.nazev} ${x.en}`, data: x })), maskaUI.hledatStat,
     (v) => pridejOblast({ typ: 'stat', id: v.data.id, nazev: v.data.nazev }),
   ));
   obnovStaty();
@@ -1908,7 +2029,7 @@ function panelMaska() {
 
   return [
     h('h2', {}, 'Ořezová maska'),
-    h('div', { class: 'poznamka' }, 'Mapa se ukáže jen ve vybraných oblastech, okolí zakryje maska. Popisky mimo oblast se skryjí. Data ve Flourishi leží nad podkladem, takže je maska neořízne.'),
+    h('div', { class: 'poznamka' }, 'Mapa se ukáže jen ve vybraných oblastech, okolí zakryje maska. Data ve Flourishi leží nad podkladem, takže je maska neořízne.'),
     m.oblasti.length
       ? h('div', { class: 'vybrane-oblasti' }, m.oblasti.map((o, i) => h('span', { class: 'stitek' }, o.nazev || o.id,
         h('button', { title: 'Odebrat', onclick: () => zmena((s) => { s.recept.maska.oblasti.splice(i, 1); }) }, '×'))))
@@ -1922,17 +2043,25 @@ function panelMaska() {
     vyberStatu,
     maskaUI.stat ? hledatRegion : null,
     regionyBox,
-    h('div', { class: 'poznamka' }, 'Můžeš vybrat víc oblastí najednou, třeba dva kraje nebo Česko a Slovensko. Hranice: Natural Earth, názvy regionů jsou většinou v místním jazyce nebo anglicky.'),
-    h('h2', {}, 'Vzhled masky'),
-    h('div', { class: 'radek' }, h('span', { class: 'popis' }, 'Barva okolí'),
+    h('div', { class: 'poznamka' }, 'Můžeš vybrat víc oblastí najednou, třeba dva kraje nebo Česko a Slovensko. Hranice: Natural Earth. Regiony jsou česky, kde český název existuje, jinak v místním tvaru. Krym je součástí Ukrajiny.'),
+    h('h2', {}, 'Okolí oblasti'),
+    h('div', { class: 'volby-masky', role: 'radiogroup', 'aria-label': 'Režim masky' },
+      [['oriznout', 'Oříznout', 'Mimo oblast nic – všechny vrstvy i popisky jsou pod plným překryvem.'],
+        ['zvyraznit', 'Zvýraznit', 'Okolí pod průhledným překryvem, průhlednost nastavíš.']].map(([k, t, p]) => h('button', {
+        class: `volba-masky${(m.rezim || 'oriznout') === k ? ' zvolena' : ''}`, role: 'radio', 'aria-checked': String((m.rezim || 'oriznout') === k),
+        onclick: () => { if ((m.rezim || 'oriznout') !== k) nastavMasku((x) => { x.rezim = k; }); },
+      }, h('strong', {}, t), h('span', {}, p)))),
+    h('div', { class: 'radek' }, h('span', { class: 'popis' }, m.rezim === 'zvyraznit' ? 'Barva překryvu' : 'Barva okolí'),
       vzorekBarvy(m.barva, (e) => otevriVybirac(e.currentTarget, m.barva, (b, klic) => zmena((s) => { s.recept.maska.barva = b; }, { klic, prekreslit: false })))),
-    posuvnik('Krytí okolí', m.kryti, {
-      min: 0, max: 1, krok: 0.05, format: (x) => `${Math.round(x * 100)} %`, klic: 'maska-kryti',
-      nastav: (x) => { stav.recept.maska.kryti = x; },
-    }),
-    h('label', { class: 'prepinac' },
-      h('input', { type: 'checkbox', checked: m.skrytPopisky, onchange: (e) => nastavMasku((x) => { x.skrytPopisky = e.target.checked; }) }),
-      'Skrýt popisky mimo oblast'),
+    m.rezim === 'zvyraznit' ? [
+      posuvnik('Krytí překryvu', m.kryti, {
+        min: 0, max: 1, krok: 0.05, format: (x) => `${Math.round(x * 100)} %`, klic: 'maska-kryti',
+        nastav: (x) => { stav.recept.maska.kryti = x; },
+      }),
+      h('label', { class: 'prepinac' },
+        h('input', { type: 'checkbox', checked: m.skrytPopisky, onchange: (e) => nastavMasku((x) => { x.skrytPopisky = e.target.checked; }) }),
+        'Skrýt popisky mimo oblast'),
+    ] : h('div', { class: 'poznamka' }, 'Uvnitř oblasti můžeš mít zapnuté všechny vrstvy – venku je nic nebude.'),
     h('h2', {}, 'Obrys oblasti'),
     h('label', { class: 'prepinac' },
       h('input', { type: 'checkbox', checked: m.obrys.zap, onchange: (e) => nastavMasku((x) => { x.obrys.zap = e.target.checked; }) }),
@@ -1983,12 +2112,72 @@ function blokZnacek() {
   ];
 }
 
+const oznaceneVybrane = new Set();
+
+function seznamVybranych(pop) {
+  const vybrane = pop.vybraneNazvy;
+  for (const n of [...oznaceneVybrane]) if (!vybrane.includes(n)) oznaceneVybrane.delete(n);
+  if (!vybrane.length) return h('p', { class: 'poznamka' }, 'Zatím není vybraný žádný název – mapa bude bez popisků.');
+  const vse = h('input', {
+    type: 'checkbox', 'aria-label': 'Označit všechny', checked: oznaceneVybrane.size === vybrane.length,
+    onchange: (e) => { oznaceneVybrane.clear(); if (e.target.checked) vybrane.forEach((n) => oznaceneVybrane.add(n)); vykresliPanel(); },
+  });
+  vse.indeterminate = oznaceneVybrane.size > 0 && oznaceneVybrane.size < vybrane.length;
+  const oznacene = [...oznaceneVybrane];
+  return [
+    h('div', { class: 'hromadne' },
+      h('label', { class: 'prepinac' }, vse, oznacene.length ? `Označeno ${oznacene.length}` : 'Označit vše'),
+      oznacene.length ? [
+        h('span', { class: 'slabe' }, 'Puntík:'),
+        prepinacPuntiku(oznacene, oznacene.every((n) => (pop.puntiky?.[n] ?? null) === (pop.puntiky?.[oznacene[0]] ?? null)) ? (pop.puntiky?.[oznacene[0]] ?? null) : undefined, { male: true }),
+      ] : null),
+    h('div', { class: 'seznam-upravenych' }, [...vybrane].sort((a, b) => zobrazenyNazev(a).localeCompare(zobrazenyNazev(b), 'cs')).map((n) => h('div', { class: 'upraveny' },
+      h('input', {
+        type: 'checkbox', checked: oznaceneVybrane.has(n), 'aria-label': `Označit ${zobrazenyNazev(n)}`,
+        onchange: (e) => { if (e.target.checked) oznaceneVybrane.add(n); else oznaceneVybrane.delete(n); vykresliPanel(); },
+      }),
+      h('span', { class: 'jmeno', title: zobrazenyNazev(n) !== n ? `Původně: ${n}` : n }, zobrazenyNazev(n)),
+      prepinacPuntiku([n], pop.puntiky?.[n] ?? null, { male: true }),
+      h('button', {
+        class: 'tl tl-male tl-ikona-male', title: 'Odebrat z vybraných', 'aria-label': `Odebrat ${zobrazenyNazev(n)}`,
+        onclick: () => zmena((s) => { s.recept.popisky.vybraneNazvy = s.recept.popisky.vybraneNazvy.filter((x) => x !== n); }),
+      }, '×')))),
+    h('div', { class: 'poznamka' }, 'Puntík: Podle druhu = jak je nastaveno nahoře pro druh sídla. Ano = puntík vždy, i při přiblížení. Platí pro názvy sídel.'),
+  ];
+}
+
+function seznamPrejmenovanych(pop) {
+  const vMape = Object.entries(pop.prejmenovane || {}).sort((a, b) => a[0].localeCompare(b[0], 'cs'));
+  const vTymu = Object.entries(tymoveNazvy).sort((a, b) => a[0].localeCompare(b[0], 'cs'));
+  const radek = (puvodni, novy, akce) => h('div', { class: 'upraveny' },
+    h('span', { class: 'jmeno' }, h('span', { class: 'puvodni' }, puvodni), ' → ', h('strong', {}, novy)), ...akce);
+  return [
+    h('div', { class: 'nadpis-sekce' }, h('h2', {}, 'Přejmenované v této mapě ', h('span', { class: 'pocet' }, String(vMape.length)))),
+    vMape.length ? h('div', { class: 'seznam-upravenych' }, vMape.map(([p, n]) => radek(p, n, [
+      h('button', { class: 'tl tl-male', onclick: () => otevriPrejmenovani(p) }, 'Upravit'),
+      h('button', { class: 'tl tl-male', onclick: () => zmena((s) => { const x = { ...s.recept.popisky.prejmenovane }; delete x[p]; s.recept.popisky.prejmenovane = x; }) }, 'Vrátit'),
+    ]))) : h('p', { class: 'poznamka' }, 'Žádný popisek není v této mapě přejmenovaný.'),
+    h('div', { class: 'nadpis-sekce' }, h('h2', {}, 'Výchozí názvy týmu ', h('span', { class: 'pocet' }, String(vTymu.length)))),
+    vTymu.length ? h('div', { class: 'seznam-upravenych' }, vTymu.map(([p, n]) => radek(p, n, [
+      h('button', { class: 'tl tl-male', onclick: () => otevriPrejmenovani(p) }, 'Upravit'),
+      h('button', {
+        class: 'tl tl-male', onclick: async () => {
+          const t = { ...tymoveNazvy }; delete t[p];
+          try { await ulozTymoveNazvy(t, `„${p}“ už se ve všech mapách zobrazuje původně.`); } catch (e) { hlaska(`Uložení se nepovedlo: ${e.message}`, true); }
+        },
+      }, 'Odebrat'),
+    ]))) : h('p', { class: 'poznamka' }, 'Tým zatím nemá žádné výchozí přejmenování.'),
+    h('div', { class: 'poznamka' }, 'Přejmenovat jde název, na který klikneš v mapě (zapni výběr názvů). Výchozí názvy týmu platí ve všech mapách, přejmenování v mapě je přebije.'),
+  ];
+}
+
 function panelNazvy() {
   if (!posledniStyl) return h('p', { class: 'poznamka' }, 'Načítám…');
   const pop = stav.recept.popisky;
   const upravene = [
     ...Object.entries(pop.posuny).map(([n, p]) => ({ n, co: `posunutý (${cislo(p[0])}; ${cislo(p[1])} em)`, vratit: (s) => { delete s.recept.popisky.posuny[n]; } })),
     ...pop.skryteNazvy.map((n) => ({ n, co: 'skrytý', vratit: (s) => { s.recept.popisky.skryteNazvy = s.recept.popisky.skryteNazvy.filter((x) => x !== n); } })),
+    ...(pop.jenVybrane ? [] : Object.entries(pop.puntiky || {}).map(([n, v]) => ({ n, co: v ? 'puntík vždy' : 'bez puntíku', vratit: (s) => { const x = { ...s.recept.popisky.puntiky }; delete x[n]; s.recept.popisky.puntiky = x; } }))),
   ].sort((a, b) => a.n.localeCompare(b.n, 'cs'));
   return [
     h('h2', {}, 'Body u sídel'),
@@ -1998,7 +2187,7 @@ function panelNazvy() {
       class: `tl velke tl-sirsi${vyberovyRezim ? ' tl-modre' : ''}`, 'aria-pressed': String(vyberovyRezim),
       onclick: () => { nastavVyberovyRezim(!vyberovyRezim); vykresliPanel(); },
     }, vyberovyRezim ? 'Vybírám názvy v mapě – hotovo' : 'Vybírat názvy kliknutím v mapě'),
-    h('div', { class: 'poznamka' }, 'Klikni na název v mapě a můžeš ho skrýt nebo posunout. Hodí se, když název zakrývá data.'),
+    h('div', { class: 'poznamka' }, 'Klikni na název v mapě a můžeš ho skrýt, posunout, přejmenovat nebo mu nastavit puntík.'),
     h('label', { class: 'prepinac' },
       h('input', {
         type: 'checkbox', checked: pop.jenVybrane, onchange: (e) => {
@@ -2011,21 +2200,19 @@ function panelNazvy() {
       h('div', { class: 'poznamka' }, vyberovyRezim
         ? 'Klikáním na názvy v mapě je zapínáš a vypínáš. Nevybrané jsou teď bledé, aby se na ně dalo kliknout – ve staženém stylu nebudou vůbec.'
         : 'Zapni výběr v mapě a klikej na názvy, které chceš ukázat.'),
-      pop.vybraneNazvy.length
-        ? h('div', { class: 'vybrane-oblasti' }, pop.vybraneNazvy.map((n) => h('span', { class: 'stitek' }, n,
-          h('button', { title: 'Skrýt', 'aria-label': `Skrýt ${n}`, onclick: () => zmena((s) => { s.recept.popisky.vybraneNazvy = s.recept.popisky.vybraneNazvy.filter((x) => x !== n); }) }, '×'))))
-        : h('p', { class: 'poznamka' }, 'Zatím není vybraný žádný název – mapa bude bez popisků.'),
+      seznamVybranych(pop),
     ] : null,
     h('div', { class: 'nadpis-sekce' },
       h('h2', {}, 'Upravené názvy ', h('span', { class: 'pocet' }, String(upravene.length))),
       upravene.length > 1 ? h('button', {
-        class: 'odkaz-tl', onclick: () => zmena((s) => { s.recept.popisky.posuny = {}; s.recept.popisky.skryteNazvy = []; }),
+        class: 'odkaz-tl', onclick: () => zmena((s) => { s.recept.popisky.posuny = {}; s.recept.popisky.skryteNazvy = []; if (!s.recept.popisky.jenVybrane) s.recept.popisky.puntiky = {}; }),
       }, 'Vrátit všechny') : null),
     upravene.length
       ? h('div', { class: 'seznam-upravenych' }, upravene.map((u) => h('div', { class: 'upraveny' },
-        h('span', { class: 'jmeno' }, u.n), h('span', { class: 'co' }, u.co),
+        h('span', { class: 'jmeno' }, zobrazenyNazev(u.n)), h('span', { class: 'co' }, u.co),
         h('button', { class: 'tl tl-male', onclick: () => zmena(u.vratit) }, 'Vrátit'))))
       : h('p', { class: 'poznamka' }, 'Žádný název není skrytý ani posunutý.'),
+    seznamPrejmenovanych(pop),
     h('div', { class: 'poznamka' }, 'Písmo, velikost a barvu celé skupiny názvů nastavíš na kartě Vrstvy po rozkliknutí vrstvy.'),
   ];
 }
@@ -2146,7 +2333,7 @@ async function overStyl(styl) {
 
 async function stahniStyl() {
   try {
-    const styl = await sestavStyl(stav.recept, { export: true, nazev: stav.meta.nazev || 'Mapa' });
+    const styl = await sestavStyl(stav.recept, { export: true, nazev: stav.meta.nazev || 'Mapa', tymoveNazvy });
     const chyby = await overStyl(styl);
     if (chyby && chyby.length) {
       console.error(chyby);
@@ -2202,6 +2389,7 @@ const tymovyOdkaz = ul.prectiTymovyOdkaz();
 document.querySelectorAll('.karty button').forEach((b) => b.addEventListener('click', () => { karta = b.dataset.karta; vykresliPanel(); }));
 $('#nazev-sablony').addEventListener('input', (e) => zmena((s) => { s.meta.nazev = e.target.value; }, { klic: 'nazev', prekreslit: false }));
 $('#mapy').addEventListener('click', () => otevriMapy());
+$('#novy-zacatek').addEventListener('click', novyZacatek);
 $('#stav-tabulky').addEventListener('click', () => nactiSablony());
 $('#zpet').addEventListener('click', () => zpet(1));
 $('#historie').addEventListener('click', (e) => otevriHistorii(e.currentTarget));

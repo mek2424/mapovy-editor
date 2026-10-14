@@ -533,3 +533,29 @@ body.zamceno .lista, body.zamceno .plocha { filter: blur(2px); }
 .co-se-stane { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 1.45; }
 .co-se-stane dt { font-weight: 700; margin-top: 6px; }
 .co-se-stane dd { margin: 0; color: #3d4560; }
+
+/* ---------------------------------------------------------------- Nový začátek, maska, názvy */
+.lista .tl-zacatek { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tl-zacatek svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.volby-masky { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+.volba-masky {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 9px 11px; border: 1px solid var(--cara);
+  background: var(--bila); border-radius: 8px; cursor: pointer; font: inherit; color: var(--text);
+}
+.volba-masky:hover { border-color: var(--modra); }
+.volba-masky span { font-size: 12px; color: var(--text-2); line-height: 1.35; }
+.volba-masky.zvolena { border: 2px solid var(--modra); background: #eef0f8; padding: 8px 10px; }
+.volba-masky.zvolena strong { color: var(--modra); }
+.segmenty { display: inline-flex; border: 1px solid var(--cara); border-radius: 7px; overflow: hidden; flex: none; }
+.segment { border: 0; background: var(--bila); padding: 5px 9px; font: inherit; font-size: 12px; cursor: pointer; color: var(--text-2); white-space: nowrap; }
+.segment + .segment { border-left: 1px solid var(--cara); }
+.segment:hover { background: var(--modra-svetla); }
+.segment.zvoleny { background: var(--modra); color: #fff; }
+.segmenty.male .segment { padding: 3px 7px; font-size: 11.5px; }
+.hromadne { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.hromadne .prepinac { margin: 0; font-size: 13px; }
+.seznam-upravenych .upraveny input[type=checkbox] { accent-color: var(--modra); margin: 0; }
+.tl-ikona-male { width: 26px; padding: 3px 0; }
+.upraveny .puvodni { color: var(--text-2); }
+.vyber-nazvu .popisek-male { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 8px 0 4px; }
+.okno.male .volba-ctverec { margin: 2px 0; }

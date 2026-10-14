@@ -2,6 +2,8 @@
 // Recept ukládá jen rozdíly proti podkladovému stylu OpenFreeMap, proto je malý
 // a vejde se do jedné buňky Google tabulky.
 
+import { STATY, REGIONY, OPRAVY } from './nazvy.js';
+
 export const ZAKLADY = {
   liberty: { nazev: 'Liberty', popis: 'Barevná mapa, výchozí pro všechny šablony', soubor: 'data/liberty.json' },
   positron: { nazev: 'Positron', popis: 'Světle šedá, tlumená', soubor: 'data/positron.json' },
@@ -16,6 +18,71 @@ export const MISTNI_ZDROJE = {
 
 // Popisky vždy česky: český název, jinak místní název latinkou, jinak původní.
 export const CESKY_NAZEV = ['coalesce', ['get', 'name:cs'], ['get', 'name:latin'], ['get', 'name']];
+
+// Slovníky {český název: [klíče]} → rychlé hledání klíč → český název (pro klik v mapě).
+const naMapu = (skupiny) => new Map(Object.entries(skupiny).flatMap(([cz, klice]) => klice.map((k) => [k, cz])));
+const STATY_MAPA = naMapu(STATY);
+const REGIONY_MAPA = naMapu(REGIONY);
+
+const jeVrstvaStatu = (l) => /^label_country/.test(l.id) || /"class"\],"country"/.test(JSON.stringify(l.filter || ''));
+const jeVrstvaRegionu = (l) => l.id === 'label_state' || /"class"\],"state"/.test(JSON.stringify(l.filter || ''));
+
+function matchZeSkupin(vstup, skupiny, vychozi) {
+  const e = ['match', vstup];
+  for (const [cz, klice] of Object.entries(skupiny)) {
+    if (!klice.length) continue;
+    e.push(klice.length === 1 ? klice[0] : klice, cz);
+  }
+  if (e.length === 2) return vychozi;
+  e.push(vychozi);
+  return e;
+}
+
+// Základní (český) název popisku podle vrstvy: státy podle kódu, regiony podle slovníku.
+export function zakladNazvu(l) {
+  if (jeVrstvaStatu(l)) return matchZeSkupin(['coalesce', ['get', 'iso_a2'], ''], STATY, CESKY_NAZEV);
+  if (jeVrstvaRegionu(l)) return matchZeSkupin(['get', 'name'], REGIONY, CESKY_NAZEV);
+  return CESKY_NAZEV;
+}
+
+// Totéž v JavaScriptu – pro název, na který se kliklo v mapě.
+export function zakladNazvuPrvku(p, l) {
+  if (l && jeVrstvaStatu(l) && STATY_MAPA.has(p.iso_a2)) return STATY_MAPA.get(p.iso_a2);
+  if (l && jeVrstvaRegionu(l) && REGIONY_MAPA.has(p.name)) return REGIONY_MAPA.get(p.name);
+  return p['name:cs'] || p['name:latin'] || p.name || p.nazev || null;
+}
+
+// Všechna přejmenování: opravy z kódu < výchozí týmu < tato mapa.
+export function vsechnaPrejmenovani(recept, tymove = {}) {
+  const v = { ...OPRAVY, ...(tymove || {}), ...(recept?.popisky?.prejmenovane || {}) };
+  for (const [k, n] of Object.entries(v)) if (!n || n === k) delete v[k];
+  return v;
+}
+
+function sPrejmenovanim(zaklad, prejm) {
+  const skupiny = {};
+  for (const [k, n] of Object.entries(prejm)) (skupiny[n] = skupiny[n] || []).push(k);
+  if (!Object.keys(skupiny).length) return zaklad;
+  return ['let', 'nazev', zaklad, matchZeSkupin(['var', 'nazev'], skupiny, ['var', 'nazev'])];
+}
+
+const PUNTIKOVE = new Set(['label_city_capital', 'label_city', 'label_town', 'label_village']);
+const PUNTIK = 'circle_11_black';
+// Puntík u jednotlivých názvů: ano = vždy, ne = nikdy, ostatní podle vrstvy.
+function obalIkonu(o, nazev, ano, ne) {
+  const obal = (x) => {
+    const e = ['case'];
+    if (ano.length) e.push(['in', nazev, ['literal', ano]], PUNTIK);
+    if (ne.length) e.push(['in', nazev, ['literal', ne]], '');
+    e.push(x ?? '');
+    return e;
+  };
+  if (Array.isArray(o) && o[0] === 'step' && JSON.stringify(o[1]) === '["zoom"]') {
+    return o.map((x, i) => (i >= 2 && i % 2 === 0 ? obal(x) : x));
+  }
+  if (Array.isArray(o) && JSON.stringify(o).includes('"zoom"')) return o;
+  return obal(o);
+}
 
 const cache = new Map();
 async function nactiJson(soubor) {
@@ -36,11 +103,12 @@ export async function nactiZaklad(id) {
 }
 
 export function prazdnyRecept(zaklad = 'liberty') {
-  return { verze: 1, zaklad, vrstvy: {}, pridane: [], popisky: { skryteNazvy: [], posuny: {}, jenVybrane: false, vybraneNazvy: [] }, mapa: { glob: false }, maska: prazdnaMaska() };
+  return { verze: 1, zaklad, vrstvy: {}, pridane: [], popisky: { skryteNazvy: [], posuny: {}, jenVybrane: false, vybraneNazvy: [], prejmenovane: {}, puntiky: {} }, mapa: { glob: false }, maska: prazdnaMaska() };
 }
 
+// rezim: 'oriznout' = mimo oblast nic (plný překryv, popisky mimo skryté), 'zvyraznit' = průhledný překryv.
 export function prazdnaMaska() {
-  return { oblasti: [], barva: '#ffffff', kryti: 1, skrytPopisky: true, obrys: { zap: true, barva: '#001464', sirka: 1.5, carky: null } };
+  return { oblasti: [], rezim: 'oriznout', barva: '#ffffff', kryti: 0.6, skrytPopisky: true, obrys: { zap: true, barva: '#001464', sirka: 1.5, carky: null } };
 }
 
 // Doplní chybějící části receptu (starší nebo ručně psané recepty).
@@ -52,6 +120,12 @@ export function doplnRecept(r) {
   v.popisky = { ...p.popisky, ...(v.popisky || {}) };
   v.mapa = { ...p.mapa, ...(v.mapa || {}) };
   v.maska = { ...p.maska, ...(v.maska || {}), obrys: { ...p.maska.obrys, ...(v.maska?.obrys || {}) } };
+  // Starší masky neměly režim: plná neprůhledná maska se skrytými popisky = oříznutí.
+  if (r?.maska && !r.maska.rezim) {
+    const kryti = r.maska.kryti ?? 1;
+    v.maska.rezim = kryti >= 1 && r.maska.skrytPopisky !== false ? 'oriznout' : 'zvyraznit';
+    v.maska.kryti = kryti;
+  }
   return v;
 }
 
@@ -147,16 +221,29 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
   const posunuteNazvy = Object.keys(posuny);
   const jenVybrane = !!recept.popisky.jenVybrane;
   const vybrane = recept.popisky.vybraneNazvy || [];
+  const prejm = vsechnaPrejmenovani(recept, moznosti.tymoveNazvy);
+  const puntiky = recept.popisky.puntiky || {};
+  const sPuntikem = Object.keys(puntiky).filter((n) => puntiky[n] === true);
+  const bezPuntiku = Object.keys(puntiky).filter((n) => puntiky[n] === false);
   const pridat = (l, podminka) => { l.filter = l.filter ? ['all', l.filter, podminka] : podminka; };
   for (const l of vrstvy) {
+    // Barevné body sídel: bez bodu u názvů s vypnutým puntíkem, při „jen vybraných“ jen u vybraných.
+    if (l.type === 'circle' && l.id.startsWith('bod_') && l['source-layer'] === 'place') {
+      if (bezPuntiku.length) pridat(l, ['!', ['in', CESKY_NAZEV, ['literal', bezPuntiku]]]);
+      if (jenVybrane && !moznosti.zvyraznitVyber) pridat(l, ['in', CESKY_NAZEV, ['literal', vybrane]]);
+      continue;
+    }
     if (l.type !== 'symbol' || !l.layout?.['text-field']) continue;
     let nazev;
     if (obsahujeNazev(l.layout['text-field'])) {
-      l.layout['text-field'] = kopie(CESKY_NAZEV);
-      nazev = CESKY_NAZEV;
+      nazev = zakladNazvu(l);
     } else if (JSON.stringify(l.layout['text-field']) === '["get","nazev"]') {
       nazev = ['get', 'nazev'];
     } else continue;
+    l.layout['text-field'] = sPrejmenovanim(kopie(nazev), prejm);
+    if (PUNTIKOVE.has(l.id) && (sPuntikem.length || bezPuntiku.length)) {
+      l.layout['icon-image'] = obalIkonu(l.layout['icon-image'], nazev, sPuntikem, bezPuntiku);
+    }
     if (skryte.length) pridat(l, ['!', ['in', nazev, ['literal', skryte]]]);
     if (jenVybrane) {
       const jeVybrany = ['in', nazev, ['literal', vybrane]];
@@ -180,7 +267,9 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
     }
   }
 
-  styl.layers = vrstvy;
+  // Popisky nahoru ještě před maskou: maska pak leží nad VŠEMI ostatními vrstvami
+  // (hranice, silnice, reliéf…) a pod ní zůstanou jen popisky, které skryje filtr.
+  styl.layers = popiskyNahoru(vrstvy);
   if (recept.maska.oblasti.length) await pridejMasku(styl, recept.maska);
   styl.layers = popiskyNahoru(styl.layers);
   // Šablona ČT ve Flourishi při „Show place labels“ zapne VŠECHNY vrstvy popisků,
@@ -304,9 +393,10 @@ async function pridejMasku(styl, maska) {
   };
   const oblast = { type: 'MultiPolygon', coordinates: polys };
   styl.sources.maska = { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: maskaGeom } };
+  const oriznout = maska.rezim !== 'zvyraznit';
   const nove = [{
     id: 'maska', type: 'fill', source: 'maska',
-    paint: { 'fill-color': maska.barva || '#ffffff', 'fill-opacity': maska.kryti ?? 1, 'fill-antialias': false },
+    paint: { 'fill-color': maska.barva || '#ffffff', 'fill-opacity': oriznout ? 1 : (maska.kryti ?? 1), 'fill-antialias': false },
   }];
   if (maska.obrys?.zap) {
     styl.sources.maska_oblast = { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: oblast } };
@@ -322,7 +412,7 @@ async function pridejMasku(styl, maska) {
   if (prvniPopisek < 0) styl.layers.push(...nove);
   else styl.layers.splice(prvniPopisek, 0, ...nove);
 
-  if (maska.skrytPopisky) {
+  if (oriznout || maska.skrytPopisky) {
     const [x1, y1, x2, y2] = hraniceGeometrie(polys);
     const tol = Math.hypot(x2 - x1, y2 - y1) * 0.002;
     const hruby = { type: 'MultiPolygon', coordinates: polys.map((p) => p.map((ring) => zjednodus(ring, tol))) };
