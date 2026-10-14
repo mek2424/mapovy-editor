@@ -66,6 +66,9 @@ function sPrejmenovanim(zaklad, prejm) {
   return ['let', 'nazev', zaklad, matchZeSkupin(['var', 'nazev'], skupiny, ['var', 'nazev'])];
 }
 
+// Popisky regionů, které vyjadřují jen ruský nárok (OSM je má vedle ukrajinských).
+const SKRYTE_REGIONY = ['Республика Крым', 'город Севастополь', 'Севастополь'];
+
 const PUNTIKOVE = new Set(['label_city_capital', 'label_city', 'label_town', 'label_village']);
 const PUNTIK = 'circle_11_black';
 // Puntík u jednotlivých názvů: ano = vždy, ne = nikdy, ostatní podle vrstvy.
@@ -227,6 +230,11 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
   const bezPuntiku = Object.keys(puntiky).filter((n) => puntiky[n] === false);
   const pridat = (l, podminka) => { l.filter = l.filter ? ['all', l.filter, podminka] : podminka; };
   for (const l of vrstvy) {
+    // Sporná území podle redakce: ruské nároky (např. Krym) se nekreslí – ani hranice, ani popisek.
+    if (l.type === 'line' && l['source-layer'] === 'boundary' && /disputed/.test(l.id + JSON.stringify(l.filter || ''))) {
+      pridat(l, ['!=', ['coalesce', ['get', 'claimed_by'], ''], 'RU']);
+    }
+    if (l.type === 'symbol' && jeVrstvaRegionu(l)) pridat(l, ['!', ['in', ['get', 'name'], ['literal', SKRYTE_REGIONY]]]);
     // Barevné body sídel: bez bodu u názvů s vypnutým puntíkem, při „jen vybraných“ jen u vybraných.
     if (l.type === 'circle' && l.id.startsWith('bod_') && l['source-layer'] === 'place') {
       if (bezPuntiku.length) pridat(l, ['!', ['in', CESKY_NAZEV, ['literal', bezPuntiku]]]);
