@@ -218,12 +218,15 @@ export function vytvorUpravy(ctx) {
       // Databáze z OSM ještě není hotová: hrubší hranice Natural Earth, které editor už má.
       const staty = await (await fetch('data/oblasti/staty.json')).json();
       staty.sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
+      // Natural Earth má pod stejným českým názvem i zámořská území – rozlišit anglickým názvem.
+      const pocetNazvu = {};
+      for (const s of staty) pocetNazvu[s.nazev] = (pocetNazvu[s.nazev] || 0) + 1;
       databaze = {
         zalozni: true,
         uzemi: [
           { kod: 'SVET', nazev: 'Svět – všechny státy', vrstvy: [{ klic: 'ne:svet', nazev: 'Státy', skupina: 'Správní členění' }] },
           ...staty.map((s) => ({
-            kod: s.id, nazev: s.nazev, hledat: s.en,
+            kod: s.id, nazev: pocetNazvu[s.nazev] > 1 ? `${s.nazev} (${s.en})` : s.nazev, hledat: s.en,
             pozn: s.regiony ? '1. úroveň' : '',
             vrstvy: [
               { klic: `ne:stat:${s.id}`, nazev: 'Obrys státu', skupina: 'Správní členění' },
@@ -1215,7 +1218,11 @@ export function vytvorUpravy(ctx) {
                   const klic = `${zvolene.kod}|${vr.klic}`;
                   return h('label', { class: `upravy-dlazdice-vrstva${p.zvolene.has(klic) ? ' zvolena' : ''}`, title: vr.popis || '' },
                     h('input', { type: 'checkbox', checked: p.zvolene.has(klic), onchange: (e) => { if (e.target.checked) p.zvolene.add(klic); else p.zvolene.delete(klic); vykresliPridat(); } }),
-                    h('span', {}, vr.nazev, vr.prvku ? h('small', {}, `${prvku(vr.prvku)}`) : null));
+                    h('span', {}, vr.nazev, vr.prvku || vr.velikost ? h('small', {}, [
+                      vr.prvku ? prvku(vr.prvku) : null,
+                      vr.velikost ? velikost(p.plna && vr.velikost.plna ? vr.velikost.plna : vr.velikost.zjednodusena) : null,
+                      p.plna && vr.soubory && !vr.soubory.plna ? 'plná není, jen zjednodušená' : null,
+                    ].filter(Boolean).join(' · ')) : null));
                 })))),
               databaze.zalozni ? null : h('div', { class: 'upravy-podrobnost' },
                 h('span', {}, 'Podrobnost'),
