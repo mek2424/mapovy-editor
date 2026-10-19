@@ -14,7 +14,8 @@ export const ZAKLADY = {
 export const MISTNI_ZDROJE = {
   kraje_hranice: { nazev: 'Hranice krajů ČR', soubor: 'data/kraje_hranice.geojson' },
   kraje_nazvy: { nazev: 'Názvy krajů ČR', soubor: 'data/kraje_nazvy.geojson' },
-  sporna_uzemi: { nazev: 'Sporná území (úpravy redakce)', soubor: 'data/sporna_uzemi.geojson' },
+  // ?v=… při každé změně dat zvýšit, jinak prohlížeč drží starou verzi z mezipaměti.
+  sporna_uzemi: { nazev: 'Sporná území (úpravy redakce)', soubor: 'data/sporna_uzemi.geojson?v=2' },
 };
 
 // Popisky vždy česky: český název, jinak místní název latinkou, jinak původní.
