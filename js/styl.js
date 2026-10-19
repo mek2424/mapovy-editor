@@ -178,7 +178,11 @@ function pridejSpornaUzemi(vrstvy, recept) {
       if (vzor.minzoom != null) nova.minzoom = vzor.minzoom;
       if (vzor.maxzoom != null) nova.maxzoom = vzor.maxzoom;
     }
-    vrstvy.splice(i + 1, 0, aplikujUpravy(nova, recept.vrstvy[v.id]));
+    nova.layout = nova.layout || {};
+    if (v.id === 'sporne_nazvy_staty') nova.layout['text-max-width'] = 10;
+    // Názvy navrch: popisky výš ve stylu se umisťují dřív, takže je nepřekryjí sídla ani silnice.
+    if (vzor.type === 'symbol') vrstvy.push(aplikujUpravy(nova, recept.vrstvy[v.id]));
+    else vrstvy.splice(i + 1, 0, aplikujUpravy(nova, recept.vrstvy[v.id]));
   }
   return vrstvy;
 }
