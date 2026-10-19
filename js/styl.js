@@ -479,6 +479,8 @@ export async function receptZeStylu(styl, zaklad = 'liberty') {
 // s „dírou“ ve tvaru vybraných oblastí; popisky mimo oblast skryje filtr „within“.
 
 export async function geometrieOblasti(o) {
+  // Oblast poslaná z karty Úpravy nese tvar s sebou (zjednodušený, aby se vešel do tabulky).
+  if (o.typ === 'vlastni') return o.geometrie;
   if (o.typ === 'stat') return (await nactiJson(`data/oblasti/stat/${o.id}.json`)).geometry;
   const fc = await nactiJson(`data/oblasti/regiony/${o.stat}.json`);
   const f = fc.features.find((x) => x.properties.id === o.id);

@@ -1,9 +1,10 @@
-import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie, polygonyMasky, hraniceGeometrie, zakladNazvuPrvku, vsechnaPrejmenovani } from './styl.js';
+import { ZAKLADY, sestavStyl, prazdnyRecept, doplnRecept, receptZeStylu, kopie, polygonyMasky, hraniceGeometrie, zakladNazvuPrvku, vsechnaPrejmenovani, geometrieOblasti } from './styl.js';
 import { PALETA_CT, SKALY, odstiny, ladici, hex, kontrast, smichej } from './barvy.js';
 import { SKUPINY, skupina, nazevVrstvy, BARVY_VRSTVY, KRYTI_VRSTVY, POPISY_VLASTNOSTI } from './vrstvy.js';
 import { DATA, pridejData, vlastniData, nastavVlastniData, prectiSoubor, hraniceDat } from './data.js';
 import { SCHEMATA, zmenySchematu, CISTY_PODKLAD } from './schemata.js';
 import * as ul from './ulozeni.js';
+import { vytvorUpravy } from './upravy.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -18,7 +19,7 @@ function h(tag, vl = {}, ...deti) {
     else if (k in el && typeof v !== 'string') el[k] = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
-  for (const d of deti.flat()) if (d != null && d !== false) el.append(d instanceof Node ? d : String(d));
+  for (const d of deti.flat(Infinity)) if (d != null && d !== false) el.append(d instanceof Node ? d : String(d));
   return el;
 }
 
@@ -51,6 +52,7 @@ let vyberovyRezim = false;
 let vybranyNazev = null;
 let mapa = null;
 let ovladaniGlobu = null;
+let kartaUprav = null; // karta Úpravy (js/upravy.js) – vzniká na konci souboru
 
 // Tlačítko glóbusu v ovládání mapy (pod +/−).
 class OvladaniGlobu {
@@ -95,7 +97,7 @@ const spoctiUlozeno = () => { stav.ulozeno = ulozeneVerze.get(stav.meta.id || ''
 function zmena(fn, { klic = null, prekreslit = true } = {}) {
   const ted = Date.now();
   if (!(klic && klic === posledniKlic && ted - posledniCas < 1500)) {
-    historie.push({ s: snimek(), cas: ted });
+    historie.push({ s: snimek(), u: kartaUprav?.snimek(), cas: ted });
     if (historie.length > 200) historie.shift();
     budouci = [];
   }
@@ -134,8 +136,10 @@ async function novyZacatek() {
   hlaska('Nový začátek: výchozí mapa a nastavení.', false, { akce: { text: 'Vrátit', fn: () => zpet(1) } });
 }
 
-function nactiSnimek(retezec) {
-  const s = JSON.parse(retezec);
+// Krok historie: { s: snimek mapy (text), u: stav karty Úpravy (neměnný objekt), cas }
+function nactiSnimek(krok) {
+  kartaUprav?.obnov(krok.u);
+  const s = JSON.parse(krok.s);
   stav.meta = s.meta;
   stav.recept = doplnRecept(s.recept);
   if (s.nahled) stav.nahled = s.nahled;
@@ -143,23 +147,25 @@ function nactiSnimek(retezec) {
 function zpet(kroku = 1) {
   if (!historie.length) return;
   for (let i = 0; i < kroku && historie.length; i++) {
-    budouci.push({ s: snimek(), cas: Date.now() });
-    nactiSnimek(historie.pop().s);
+    budouci.push({ s: snimek(), u: kartaUprav?.snimek(), cas: Date.now() });
+    nactiSnimek(historie.pop());
   }
   posledniKlic = null;
   poZmene();
 }
 function znovu() {
   if (!budouci.length) return;
-  historie.push({ s: snimek(), cas: Date.now() });
-  nactiSnimek(budouci.pop().s);
+  historie.push({ s: snimek(), u: kartaUprav?.snimek(), cas: Date.now() });
+  nactiSnimek(budouci.pop());
   posledniKlic = null;
   poZmene();
 }
 
 // Krátký popis kroku: co se změnilo mezi dvěma stavy.
-function popisKroku(predtim, potom) {
-  const a = JSON.parse(predtim); const b = JSON.parse(potom);
+function popisKroku(krokPredtim, krokPotom) {
+  const upravyDat = kartaUprav?.popisSnimku(krokPredtim.u, krokPotom.u);
+  if (upravyDat && krokPredtim.s === krokPotom.s) return `Úpravy: ${upravyDat}`;
+  const a = JSON.parse(krokPredtim.s); const b = JSON.parse(krokPotom.s);
   if ((a.meta.id || '') !== (b.meta.id || '') || a.meta.otevreno !== b.meta.otevreno) {
     return `otevření mapy „${b.meta.nazev || 'Nová mapa'}“`;
   }
@@ -214,14 +220,14 @@ h('span', { class: 'texty' }, text, popis ? h('small', {}, popis) : null));
 
 function otevriHistorii(kotva) {
   const polozky = [];
-  let dalsi = snimek();
+  let dalsi = { s: snimek(), u: kartaUprav?.snimek() };
   for (let i = historie.length - 1; i >= 0 && polozky.length < 40; i--) {
     const k = historie[i];
     const pocet = historie.length - i;
     const sekund = Math.round((Date.now() - k.cas) / 1000);
     const kdy = sekund < 60 ? `před ${sekund} s` : sekund < 3600 ? `před ${Math.round(sekund / 60)} min` : new Date(k.cas).toLocaleTimeString('cs');
-    polozky.push({ pocet, text: `Vrátit: ${popisKroku(k.s, dalsi)}`, kdy });
-    dalsi = k.s;
+    polozky.push({ pocet, text: `Vrátit: ${popisKroku(k, dalsi)}`, kdy });
+    dalsi = k;
   }
   otevriPopup(kotva, (zavri) => [
     h('h3', {}, `Historie úprav (${historie.length})`),
@@ -275,7 +281,7 @@ async function aktualizujMapu() {
   const stareIds = posledniStyl?.layers.map((l) => l.id).join();
   posledniStyl = styl;
   const jineVrstvy = stareIds !== styl.layers.map((l) => l.id).join();
-  const sDaty = pridejData(kopie(styl), stav.nahled);
+  const sDaty = kartaUprav.pridejDoStylu(pridejData(kopie(styl), stav.nahled));
   if (!mapa) {
     mapa = new maplibregl.Map({
       container: 'mapa', style: sDaty, center: [15.3, 49.8], zoom: 5.2,
@@ -290,12 +296,13 @@ async function aktualizujMapu() {
     mapa.on('load', infoMapy);
     mapa.on('click', klikNaMapu);
     mapa.on('error', (e) => console.warn('Mapa:', e?.error?.message || e));
+    kartaUprav.pripojMapu(mapa);
   } else {
     mapa.setStyle(sDaty, { diff: true });
   }
   // Panel se překreslí po změně (ne při tažení posuvníku) nebo když přibyla či ubyla vrstva.
   if (prekreslitPoStylu || jineVrstvy) { prekreslitPoStylu = false; vykresliPanel(); }
-  window.mapovyEditor = { mapa, stav, styl: () => posledniStyl, prejmenovat: otevriPrejmenovani };
+  window.mapovyEditor = { mapa, stav, styl: () => posledniStyl, prejmenovat: otevriPrejmenovani, upravy: kartaUprav };
 }
 
 function infoMapy() {
@@ -416,7 +423,7 @@ function prepinacPuntiku(nazvy, aktualni, { male = false } = {}) {
 }
 
 function klikNaMapu(e) {
-  if (!vyberovyRezim || !posledniStyl) return;
+  if (!vyberovyRezim || !posledniStyl || karta === 'upravy') return;
   const vrstvy = posledniStyl.layers.filter((l) => l.type === 'symbol' && jeViditelna(l)).map((l) => l.id);
   const pole = [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]];
   const f = mapa.queryRenderedFeatures(pole, { layers: vrstvy.filter((id) => mapa.getLayer(id)) });
@@ -908,7 +915,7 @@ function vykresliPanel() {
   document.querySelectorAll('.karty button').forEach((b) => b.classList.toggle('aktivni', b.dataset.karta === karta));
   const obsah = $('#obsah-panelu');
   const scroll = obsah.scrollTop;
-  const fn = { vrstvy: panelVrstvy, nazvy: panelNazvy, maska: panelMaska, data: panelData }[karta] || panelVrstvy;
+  const fn = { vrstvy: panelVrstvy, nazvy: panelNazvy, maska: panelMaska, data: panelData, upravy: () => kartaUprav.panel() }[karta] || panelVrstvy;
   obsah.replaceChildren(...[fn()].flat(Infinity).filter((x) => x != null && x !== false));
   obsah.scrollTop = scroll;
   vykresliVyberNazvu();
@@ -2038,6 +2045,7 @@ function panelMaska() {
       : h('p', { class: 'poznamka' }, 'Zatím není vybraná žádná oblast – maska je vypnutá.'),
     m.oblasti.length ? h('div', { class: 'tlacitka' },
       h('button', { class: 'tl tl-male', onclick: priblizNaMasku }, 'Přiblížit na oblast'),
+      h('button', { class: 'tl tl-male', onclick: () => kartaUprav.prevzitMasku(), title: 'Obrys masky zjednodušit, sloučit nebo upravit a poslat zpátky' }, 'Upravit v kartě Úpravy'),
       h('button', { class: 'tl tl-male tl-nebezpecne', onclick: () => zmena((s) => { s.recept.maska.oblasti = []; }) }, 'Zrušit masku')) : null,
     h('h2', {}, 'Přidat stát'),
     hledatStat, statyBox,
@@ -2045,7 +2053,7 @@ function panelMaska() {
     vyberStatu,
     maskaUI.stat ? hledatRegion : null,
     regionyBox,
-    h('div', { class: 'poznamka' }, 'Můžeš vybrat víc oblastí najednou, třeba dva kraje nebo Česko a Slovensko. Hranice: Natural Earth. Regiony jsou česky, kde český název existuje, jinak v místním tvaru. Krym je součástí Ukrajiny.'),
+    h('div', { class: 'poznamka' }, 'Můžeš vybrat víc oblastí najednou, třeba dva kraje nebo Česko a Slovensko. Hranice: Natural Earth. Regiony jsou česky, kde český název existuje, jinak v místním tvaru. Krym je součástí Ukrajiny. Podrobnější hranice (obce, CHKO…) pošleš do masky z karty Úpravy.'),
     h('h2', {}, 'Okolí oblasti'),
     h('div', { class: 'volby-masky', role: 'radiogroup', 'aria-label': 'Režim masky' },
       [['oriznout', 'Oříznout', 'Mimo oblast nic – všechny vrstvy i popisky jsou pod plným překryvem.'],
@@ -2263,7 +2271,8 @@ function panelData() {
       n.vlastniBarvit === 'skala' ? h('div', { class: 'radek' }, h('label', {}, 'Škála'),
         h('select', { onchange: (e) => zmenNahled((x) => { x.skala = e.target.value; }) },
           Object.entries(SKALY).map(([k, sk]) => h('option', { value: k, selected: k === n.skala }, sk.nazev)))) : null,
-      h('div', { class: 'tlacitka' }, h('button', { class: 'tl tl-male', onclick: () => priblizNaData() }, 'Přiblížit na data')),
+      h('div', { class: 'tlacitka' }, h('button', { class: 'tl tl-male', onclick: () => priblizNaData() }, 'Přiblížit na data'),
+        h('button', { class: 'tl tl-male', onclick: () => kartaUprav.prevzitData(), title: 'Zjednodušit, sloučit nebo vyčistit a poslat zpátky' }, 'Upravit v kartě Úpravy')),
     ] : null,
     h('div', { class: 'poznamka' }, 'Škály Reds, Blues a Oranges odpovídají předlohám ColorBrewer, ze kterých vychází Flourish. Vlastní data zůstávají jen v tomto prohlížeči.'),
   ];
@@ -2371,13 +2380,15 @@ function vyberSoubor(poNacteni, prijima = '.json,application/json') {
 // ---------------------------------------------------------------- drobnosti
 
 let hlaskaCasovac = null;
-// akce: { text, fn } – tlačítko v hlášce, typicky „Vrátit“. Hláška s akcí vydrží déle.
+// akce: { text, fn } nebo jejich seznam – tlačítka v hlášce, typicky „Vrátit“. Hláška s akcí vydrží déle.
 function hlaska(text, chyba = false, { akce = null } = {}) {
   const el = $('#hlaska');
   const skryj = () => el.classList.remove('videt');
-  el.replaceChildren(h('span', {}, text), akce ? h('button', {
-    class: 'hlaska-akce', onclick: async (e) => { e.currentTarget.disabled = true; skryj(); await akce.fn(); },
-  }, akce.text) : null);
+  const akce2 = [akce].flat().filter(Boolean);
+  el.replaceChildren(h('span', {}, text), ...akce2.map((a) => h('button', {
+    class: 'hlaska-akce', onclick: async (e) => { e.currentTarget.disabled = true; skryj(); await a.fn(); },
+  }, a.text)));
+  akce = akce2.length ? akce2 : null;
   el.classList.toggle('chyba', chyba);
   el.classList.toggle('s-akci', !!akce);
   el.classList.add('videt');
@@ -2387,8 +2398,23 @@ function hlaska(text, chyba = false, { akce = null } = {}) {
 
 // ---------------------------------------------------------------- start
 
+// Přepnutí karty. Vrstvy Úprav jsou na mapě jen při otevřené kartě, proto i nová mapa.
+function prepniKartu(k) {
+  karta = k;
+  vykresliPanel();
+  naplanujMapu();
+}
+
+kartaUprav = vytvorUpravy({
+  h, hlaska, zmena, zpet: (n) => zpet(n), naplanujMapu, vykresliPanel, prepniKartu,
+  karta: () => karta, mapa: () => mapa, stav: () => stav,
+  maleOkno, otevriPopup, polozkaMenu, vzorekBarvy, otevriVybirac,
+  vlastniData, nastavVlastniData, prectiSoubor, geometrieOblasti,
+});
+kartaUprav.pripojPretazeni($('.nahled'));
+
 const tymovyOdkaz = ul.prectiTymovyOdkaz();
-document.querySelectorAll('.karty button').forEach((b) => b.addEventListener('click', () => { karta = b.dataset.karta; vykresliPanel(); }));
+document.querySelectorAll('.karty button').forEach((b) => b.addEventListener('click', () => prepniKartu(b.dataset.karta)));
 $('#nazev-sablony').addEventListener('input', (e) => zmena((s) => { s.meta.nazev = e.target.value; }, { klic: 'nazev', prekreslit: false }));
 $('#mapy').addEventListener('click', () => otevriMapy());
 $('#novy-zacatek').addEventListener('click', novyZacatek);
