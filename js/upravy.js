@@ -687,7 +687,7 @@ export function vytvorUpravy(ctx) {
         if (!s.sloupec) throw new Error('vyber sloupec');
         const vysledek = await slouceneSloupcem(v, s.sloupec, s.mezery, { plne: true });
         const features = vysledek.features.map((f) => ({ type: 'Feature', properties: { id: f.properties._skupina, nazev: f.properties._skupina, [s.sloupec]: f.properties._skupina }, geometry: f.geometry }));
-        const nazev = `${v.nazev} podle ${s.sloupec}`;
+        const nazev = `${v.nazev} – sloučeno podle „${s.sloupec}“`;
         const nova = await sestavVrstvu({ id: novyId(), nazev, puvod: `sloučení podle ${s.sloupec}`, zaklad: { type: 'FeatureCollection', features }, mira: v.mira, barva: volnaBarva(), skryta: false, topologie: true });
         ui.pohled = 'hlavni'; ui.vyber.clear(); ui.nahled = null;
         zmen({ vrstvy: [...u.vrstvy, nova], aktivni: nova.id }, `sloučení podle sloupce ${s.sloupec}`);
