@@ -25,6 +25,7 @@ export function skupina(l) {
   if (l.type === 'raster' || l.type === 'hillshade') return 'relief';
   if (l.source === 'kraje_hranice') return 'hranice';
   if (l.source === 'kraje_nazvy') return 'popisky_mist';
+  if (l.source === 'sporna_uzemi') return l.type === 'line' ? 'hranice' : 'popisky_mist';
   if (l.type === 'circle' && sl === 'place') return 'body_sidel';
   if (l.type === 'symbol') {
     if (sl === 'place') return 'popisky_mist';
@@ -46,7 +47,12 @@ export function skupina(l) {
 
 const NAZVY = {
   background: 'Pevnina',
-  natural_earth: 'Stínovaný reliéf (Natural Earth, do přiblížení 7)',
+  natural_earth: 'Stínovaný reliéf (Natural Earth)',
+  sporne_hranice_plne: 'Sporná území – uznané hranice (Golany)',
+  sporne_hranice_teckovane: 'Sporná území – tečkované hranice (Západní Sahara)',
+  sporne_nazvy_staty: 'Sporná území – názvy (Západní Sahara)',
+  sporne_nazvy_oblasti: 'Sporná území – názvy (Kaliningrad, Nachičevan)',
+  sporne_nazvy_golan: 'Sporná území – název Golanských výšin',
   water: 'Vodní plochy a moře',
   'water-intermittent': 'Občasné vodní plochy',
   pobrezi: 'Pobřežní čára',

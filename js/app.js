@@ -311,7 +311,7 @@ function infoMapy() {
 // ---------------------------------------------------------------- výběr názvu v mapě
 
 // Klíč názvu = český název před přejmenováním (stejný, jaký používají filtry ve stylu).
-const nazevPrvku = (f) => zakladNazvuPrvku(f.properties || {}, f.layer);
+const nazevPrvku = (f) => zakladNazvuPrvku(f.properties || {}, f.layer, f.geometry);
 // Jak se název v mapě opravdu zobrazí (po přejmenování).
 const zobrazenyNazev = (n) => vsechnaPrejmenovani(stav.recept, tymoveNazvy)[n] || n;
 
@@ -897,6 +897,8 @@ async function receptNoveMapy(zaklad, schema, cisty) {
     aplikujSchemaNa(recept, styl, schema, cisty);
   }
   recept.vzhled = { schema: SCHEMATA[schema] ? schema : 'puvodni' };
+  // Stínovaný reliéf je v nové mapě vidět při každém přiblížení (podklad má jen do 7).
+  if (zaklad === 'liberty') recept.vrstvy.natural_earth = { ...(recept.vrstvy.natural_earth || {}), maxzoom: 24 };
   return recept;
 }
 

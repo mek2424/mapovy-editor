@@ -14,6 +14,7 @@ export const ZAKLADY = {
 export const MISTNI_ZDROJE = {
   kraje_hranice: { nazev: 'Hranice krajů ČR', soubor: 'data/kraje_hranice.geojson' },
   kraje_nazvy: { nazev: 'Názvy krajů ČR', soubor: 'data/kraje_nazvy.geojson' },
+  sporna_uzemi: { nazev: 'Sporná území (úpravy redakce)', soubor: 'data/sporna_uzemi.geojson' },
 };
 
 // Popisky vždy česky: český název, jinak místní název latinkou, jinak původní.
@@ -23,6 +24,56 @@ export const CESKY_NAZEV = ['coalesce', ['get', 'name:cs'], ['get', 'name:latin'
 const naMapu = (skupiny) => new Map(Object.entries(skupiny).flatMap(([cz, klice]) => klice.map((k) => [k, cz])));
 const STATY_MAPA = naMapu(STATY);
 const REGIONY_MAPA = naMapu(REGIONY);
+
+// ---------------------------------------------------------------- exonyma sídel
+// OSM má v name:cs i archaické tvary (Inšpruk, Řezno, Štýrský Hradec, Pětikostelí…).
+// U sídel v Evropě, jejichž místní název je latinkou, se český tvar použije, jen když je
+// v tomto seznamu běžně užívaných názvů (nebo je částí místního názvu, např. Brusel
+// v „Bruxelles - Brussel“). Jinak zůstane místní název. Mimo Evropu a u místních názvů
+// v jiném písmu (Moskva, Peking, Bombaj) se český tvar používá vždy.
+export const POVOLENA_EXONYMA = [
+  // Německo, Rakousko, Švýcarsko
+  'Berlín', 'Hamburk', 'Brémy', 'Mnichov', 'Norimberk', 'Drážďany', 'Lipsko', 'Kolín nad Rýnem',
+  'Frankfurt nad Mohanem', 'Frankfurt nad Odrou', 'Magdeburk', 'Vídeň', 'Linec', 'Salcburk',
+  'Curych', 'Ženeva', 'Basilej', 'Lucern',
+  // Itálie, Vatikán, Monako
+  'Řím', 'Milán', 'Benátky', 'Florencie', 'Neapol', 'Janov', 'Turín', 'Terst', 'Syrakusy', 'Vatikán', 'Monako',
+  // západ a sever Evropy
+  'Paříž', 'Štrasburk', 'Dunkerk', 'Londýn', 'Brusel', 'Antverpy', 'Bruggy', 'Lutych', 'Haag', 'Lucemburk',
+  'Lisabon', 'Valencie', 'Kodaň', 'Helsinky', 'Riga',
+  // Polsko
+  'Varšava', 'Krakov', 'Vratislav', 'Gdaňsk', 'Gdyně', 'Štětín', 'Katovice', 'Poznaň', 'Lodž', 'Toruň',
+  'Opolí', 'Čenstochová', 'Bělostok', 'Těšín',
+  // Maďarsko, Rumunsko, Moldavsko, Balkán, Turecko
+  'Budapešť', 'Debrecín', 'Segedín', 'Miškovec', 'Šoproň', 'Bukurešť', 'Kluž', 'Brašov', 'Ploješť', 'Konstanca',
+  'Kišiněv', 'Záhřeb', 'Lublaň', 'Dubrovník', 'Priština', 'Tirana', 'Istanbul',
+  // jen jiný přepis (bez diakritiky apod.)
+  'Malaga', 'Ibiza', 'Palma de Mallorca', 'San Sebastián', 'Kingston upon Hull',
+];
+// Archaické tvary u sídel s místním názvem v jiném písmu → místní název latinkou.
+export const ZAKAZANA_EXONYMA = ['Nový Sad'];
+// Hrubý obdélník Evropy (vč. Islandu, Kanárských ostrovů a Turecka po 45° v. d.).
+const EVROPA = { type: 'Polygon', coordinates: [[[-32, 27], [45, 27], [45, 72], [-32, 72], [-32, 27]]] };
+const POVOLENA_SET = new Set(POVOLENA_EXONYMA);
+
+export const NAZEV_SIDLA = ['case',
+  ['all', ['has', 'name:cs'], ['==', ['get', 'name'], ['get', 'name:latin']], ['within', EVROPA],
+    ['!', ['in', ['to-string', ['get', 'name:cs']], ['literal', POVOLENA_EXONYMA]]],
+    ['!', ['in', ['to-string', ['get', 'name:cs']], ['to-string', ['get', 'name']]]]],
+  ['get', 'name'],
+  ['in', ['to-string', ['coalesce', ['get', 'name:cs'], '']], ['literal', ZAKAZANA_EXONYMA]], ['coalesce', ['get', 'name:latin'], ['get', 'name']],
+  CESKY_NAZEV];
+
+const vEvrope = (g) => {
+  const c = g?.type === 'Point' ? g.coordinates : null;
+  return !c || (c[0] >= -32 && c[0] <= 45 && c[1] >= 27 && c[1] <= 72);
+};
+function nazevSidlaJS(p, g) {
+  const cs = p['name:cs'];
+  if (cs && p.name === p['name:latin'] && vEvrope(g) && !POVOLENA_SET.has(cs) && !String(p.name).includes(cs)) return p.name;
+  if (cs && ZAKAZANA_EXONYMA.includes(cs)) return p['name:latin'] || p.name;
+  return cs || p['name:latin'] || p.name || p.nazev || null;
+}
 
 const jeVrstvaStatu = (l) => /^label_country/.test(l.id) || /"class"\],"country"/.test(JSON.stringify(l.filter || ''));
 const jeVrstvaRegionu = (l) => l.id === 'label_state' || /"class"\],"state"/.test(JSON.stringify(l.filter || ''));
@@ -42,13 +93,15 @@ function matchZeSkupin(vstup, skupiny, vychozi) {
 export function zakladNazvu(l) {
   if (jeVrstvaStatu(l)) return matchZeSkupin(['coalesce', ['get', 'iso_a2'], ''], STATY, CESKY_NAZEV);
   if (jeVrstvaRegionu(l)) return matchZeSkupin(['get', 'name'], REGIONY, CESKY_NAZEV);
+  if (l['source-layer'] === 'place') return NAZEV_SIDLA;
   return CESKY_NAZEV;
 }
 
 // Totéž v JavaScriptu – pro název, na který se kliklo v mapě.
-export function zakladNazvuPrvku(p, l) {
+export function zakladNazvuPrvku(p, l, geometrie) {
   if (l && jeVrstvaStatu(l) && STATY_MAPA.has(p.iso_a2)) return STATY_MAPA.get(p.iso_a2);
   if (l && jeVrstvaRegionu(l) && REGIONY_MAPA.has(p.name)) return REGIONY_MAPA.get(p.name);
+  if (l && l['source-layer'] === 'place' && !jeVrstvaStatu(l) && !jeVrstvaRegionu(l)) return nazevSidlaJS(p, geometrie);
   return p['name:cs'] || p['name:latin'] || p.name || p.nazev || null;
 }
 
@@ -66,8 +119,69 @@ function sPrejmenovanim(zaklad, prejm) {
   return ['let', 'nazev', zaklad, matchZeSkupin(['var', 'nazev'], skupiny, ['var', 'nazev'])];
 }
 
-// Popisky regionů, které vyjadřují jen ruský nárok (OSM je má vedle ukrajinských).
-const SKRYTE_REGIONY = ['Республика Крым', 'город Севастополь', 'Севастополь'];
+// ---------------------------------------------------------------- sporná území (rozhodnutí redakce)
+// Popisky regionů, které vyjadřují jen ruský nárok (OSM je má vedle ukrajinských), a regiony,
+// které nahrazují vlastní popisky s příslušností (Kaliningrad, Nachičevan).
+const SKRYTE_REGIONY = ['Республика Крым', 'город Севастополь', 'Севастополь',
+  'Калининградская область', 'Kaliningrad', 'Naxçıvan', 'Naxçıvan Muxtar Respublikası'];
+const SPORNY_NAZEV = ['to-string', ['coalesce', ['get', 'disputed_name'], '']];
+// Sporné úseky, které se kreslí jako běžná státní hranice (plnou čarou).
+const PLNE_SPORNE = ['ArunachalPradesh', 'Bhutan-China', "China'sclaimedborder", 'disputedborder(BT-CN)', 'KutoeGewog,LhuentseBhutan'];
+const jeOsetie = ['in', 'Осет', SPORNY_NAZEV];
+const SPORNE_JAKO_STATNI = ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1],
+  ['any', jeOsetie, ['in', SPORNY_NAZEV, ['literal', PLNE_SPORNE]]]];
+// Hranice Arunáčalpradéše s Ásámem je vnitřní hranice Indie.
+const SPORNE_JAKO_VNITRNI = ['all', ['==', SPORNY_NAZEV, 'ArunachalPradesh'], ['==', ['get', 'admin_level'], 4]];
+const SPORNE_SKRYT = ['any', jeOsetie, ['in', SPORNY_NAZEV, ['literal', PLNE_SPORNE]]];
+
+const jeHraniceVrstva = (l) => l.type === 'line' && l['source-layer'] === 'boundary';
+export function upravSpornaUzemi(l) {
+  const pridat = (podminka) => { l.filter = l.filter ? ['all', l.filter, podminka] : podminka; };
+  const nebo = (podminka) => { if (l.filter) l.filter = ['any', l.filter, podminka]; };
+  if (jeHraniceVrstva(l)) {
+    const f = JSON.stringify(l.filter || '');
+    if (/disputed/.test(l.id) || /\["==",\["get","disputed"\],1\]/.test(f)) {
+      // Ruské nároky (Krym) se nekreslí; Osetie, Bhútán a Arunáčalpradéš se nekreslí tečkovaně.
+      pridat(['!=', ['coalesce', ['get', 'claimed_by'], ''], 'RU']);
+      pridat(['!', SPORNE_SKRYT]);
+    } else if (l.id === 'boundary_2') nebo(SPORNE_JAKO_STATNI);
+    else if (l.id === 'boundary_3') nebo(SPORNE_JAKO_VNITRNI);
+  }
+  if (l.type === 'symbol' && jeVrstvaRegionu(l)) pridat(['!', ['in', ['get', 'name'], ['literal', SKRYTE_REGIONY]]]);
+  return l;
+}
+
+// Vlastní čáry a popisky ze zdroje sporna_uzemi: vzhled převezmou od vrstev podkladu
+// (barvy, šířky i skrytí z karty Vrstvy), aby vypadaly jako ostatní hranice a názvy.
+const SPORNE_VRSTVY = [
+  { id: 'sporne_hranice_plne', vzor: 'boundary_2', filtr: ['==', ['get', 'druh'], 'plna'] },
+  { id: 'sporne_hranice_teckovane', vzor: 'boundary_disputed', filtr: ['==', ['get', 'druh'], 'sporna'] },
+  { id: 'sporne_nazvy_staty', vzor: 'label_country_3', filtr: ['==', ['get', 'vrstva'], 'stat'], minzoom: 3, maxzoom: 9 },
+  { id: 'sporne_nazvy_oblasti', vzor: 'label_state', filtr: ['==', ['get', 'vrstva'], 'oblast'], minzoom: 3, maxzoom: 9 },
+  { id: 'sporne_nazvy_golan', vzor: 'label_state', filtr: ['==', ['get', 'vrstva'], 'golan'], minzoom: 6, maxzoom: 12 },
+];
+export const ID_SPORNYCH = new Set(SPORNE_VRSTVY.map((v) => v.id));
+
+function pridejSpornaUzemi(vrstvy, recept) {
+  vrstvy = vrstvy.filter((l) => !ID_SPORNYCH.has(l.id));
+  for (const v of SPORNE_VRSTVY) {
+    const i = vrstvy.findIndex((l) => l.id === v.vzor);
+    if (i < 0) continue;
+    const vzor = vrstvy[i];
+    const nova = { id: v.id, type: vzor.type, source: 'sporna_uzemi', filter: v.filtr };
+    if (vzor.paint) nova.paint = kopie(vzor.paint);
+    if (vzor.layout) nova.layout = kopie(vzor.layout);
+    if (vzor.type === 'symbol') {
+      nova.layout['text-field'] = ['get', 'nazev'];
+      nova.minzoom = v.minzoom; nova.maxzoom = v.maxzoom;
+    } else {
+      if (vzor.minzoom != null) nova.minzoom = vzor.minzoom;
+      if (vzor.maxzoom != null) nova.maxzoom = vzor.maxzoom;
+    }
+    vrstvy.splice(i + 1, 0, aplikujUpravy(nova, recept.vrstvy[v.id]));
+  }
+  return vrstvy;
+}
 
 const PUNTIKOVE = new Set(['label_city_capital', 'label_city', 'label_town', 'label_village']);
 const PUNTIK = 'circle_11_black';
@@ -208,6 +322,8 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
     else vrstvy.splice(i + 1, 0, nova);
   }
 
+  vrstvy = pridejSpornaUzemi(vrstvy, recept);
+
   // Zdroje vlastních vrstev.
   const potreba = new Set(vrstvy.map((l) => l.source).filter((s) => s && MISTNI_ZDROJE[s]));
   for (const id of potreba) {
@@ -230,15 +346,11 @@ export async function sestavStyl(receptVstup, moznosti = {}) {
   const bezPuntiku = Object.keys(puntiky).filter((n) => puntiky[n] === false);
   const pridat = (l, podminka) => { l.filter = l.filter ? ['all', l.filter, podminka] : podminka; };
   for (const l of vrstvy) {
-    // Sporná území podle redakce: ruské nároky (např. Krym) se nekreslí – ani hranice, ani popisek.
-    if (l.type === 'line' && l['source-layer'] === 'boundary' && /disputed/.test(l.id + JSON.stringify(l.filter || ''))) {
-      pridat(l, ['!=', ['coalesce', ['get', 'claimed_by'], ''], 'RU']);
-    }
-    if (l.type === 'symbol' && jeVrstvaRegionu(l)) pridat(l, ['!', ['in', ['get', 'name'], ['literal', SKRYTE_REGIONY]]]);
+    upravSpornaUzemi(l);
     // Barevné body sídel: bez bodu u názvů s vypnutým puntíkem, při „jen vybraných“ jen u vybraných.
     if (l.type === 'circle' && l.id.startsWith('bod_') && l['source-layer'] === 'place') {
-      if (bezPuntiku.length) pridat(l, ['!', ['in', CESKY_NAZEV, ['literal', bezPuntiku]]]);
-      if (jenVybrane && !moznosti.zvyraznitVyber) pridat(l, ['in', CESKY_NAZEV, ['literal', vybrane]]);
+      if (bezPuntiku.length) pridat(l, ['!', ['in', NAZEV_SIDLA, ['literal', bezPuntiku]]]);
+      if (jenVybrane && !moznosti.zvyraznitVyber) pridat(l, ['in', NAZEV_SIDLA, ['literal', vybrane]]);
       continue;
     }
     if (l.type !== 'symbol' || !l.layout?.['text-field']) continue;
@@ -304,12 +416,14 @@ function jeVyrazSeZoomem(v) {
 // Převod libovolného stylu (např. dřívější mapy) na recept proti zvolenému podkladu.
 export async function receptZeStylu(styl, zaklad = 'liberty') {
   const zakl = await nactiZaklad(zaklad);
-  const zaklVrstvy = new Map(zakl.layers.map((l) => [l.id, l]));
+  // Porovnává se s podkladem po úpravách sporných území, aby se do receptu nedostaly jako ruční změny.
+  const zaklVrstvy = new Map(zakl.layers.map((l) => [l.id, upravSpornaUzemi(kopie(l))]));
   const ids = new Set(styl.layers.map((l) => l.id));
   const r = prazdnyRecept(zaklad);
   for (const b of zakl.layers) if (!ids.has(b.id)) r.vrstvy[b.id] = { skryta: true };
   let predchozi = null;
   for (const l of styl.layers) {
+    if (ID_SPORNYCH.has(l.id)) continue;
     const b = zaklVrstvy.get(l.id);
     if (b) {
       const u = {};
@@ -317,7 +431,7 @@ export async function receptZeStylu(styl, zaklad = 'liberty') {
         const d = {};
         const klice = new Set([...Object.keys(b[cast] || {}), ...Object.keys(l[cast] || {})]);
         for (const k of klice) {
-          if (k === 'visibility') continue;
+          if (k === 'visibility' || k === 'text-field') continue;
           const bv = JSON.stringify(b[cast]?.[k]);
           const lv = JSON.stringify(l[cast]?.[k]);
           if (bv !== lv) d[k] = l[cast]?.[k] ?? null;
