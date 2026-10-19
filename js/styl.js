@@ -133,6 +133,15 @@ const SPORNE_JAKO_STATNI = ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['g
 // Hranice Arunáčalpradéše s Ásámem je vnitřní hranice Indie.
 const SPORNE_JAKO_VNITRNI = ['all', ['==', SPORNY_NAZEV, 'ArunachalPradesh'], ['==', ['get', 'admin_level'], 4]];
 const SPORNE_SKRYT = ['any', jeOsetie, ['in', SPORNY_NAZEV, ['literal', PLNE_SPORNE]]];
+// V malých přiblíženích (dlaždice do z4) nemají sporné čáry názvy ani nároky a jsou sloučené
+// po celých oblastech. Proto se skrývají podle polohy (celé uvnitř obdélníků) a potřebné
+// části jsou překreslené ze zdroje sporna_uzemi: Bhútán a Arunáčalpradéš plně, ostatní tečkovaně.
+const obdelnik = ([x1, y1, x2, y2]) => [[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]];
+const MALE_Z5 = { type: 'MultiPolygon', coordinates: [[88.5, 26.5, 97.6, 29.6], [77.5, 30.4, 80.4, 35.7], [33, 44.5, 37.2, 46.5]].map(obdelnik) };
+const MALE_Z3 = { type: 'MultiPolygon', coordinates: [[88.5, 26.5, 97.6, 29.6], [77.5, 30.4, 80.4, 35.7], [33, 44.5, 37.2, 46.5],
+  [145, 43, 146.2, 45], [27.5, 9, 29.3, 9.9], [34.2, 4.4, 36.1, 5.7], [34.1, 31.1, 34.7, 31.7], [35, 33, 35.95, 33.5],
+  [34.8, 31.3, 35.7, 32.6], [47.8, 7.8, 49.1, 11.4]].map(obdelnik) };
+const SPORNE_SKRYT_MALE = ['any', ['all', ['<', ['zoom'], 5], ['within', MALE_Z5]], ['all', ['<', ['zoom'], 3], ['within', MALE_Z3]]];
 
 const jeHraniceVrstva = (l) => l.type === 'line' && l['source-layer'] === 'boundary';
 export function upravSpornaUzemi(l) {
@@ -144,6 +153,7 @@ export function upravSpornaUzemi(l) {
       // Ruské nároky (Krym) se nekreslí; Osetie, Bhútán a Arunáčalpradéš se nekreslí tečkovaně.
       pridat(['!=', ['coalesce', ['get', 'claimed_by'], ''], 'RU']);
       pridat(['!', SPORNE_SKRYT]);
+      pridat(['!', SPORNE_SKRYT_MALE]);
     } else if (l.id === 'boundary_2') nebo(SPORNE_JAKO_STATNI);
     else if (l.id === 'boundary_3') nebo(SPORNE_JAKO_VNITRNI);
   }
@@ -153,9 +163,10 @@ export function upravSpornaUzemi(l) {
 
 // Vlastní čáry a popisky ze zdroje sporna_uzemi: vzhled převezmou od vrstev podkladu
 // (barvy, šířky i skrytí z karty Vrstvy), aby vypadaly jako ostatní hranice a názvy.
+const vRozsahu = ['all', ['>=', ['zoom'], ['to-number', ['coalesce', ['get', 'od'], 0]]], ['<', ['zoom'], ['to-number', ['coalesce', ['get', 'do'], 99]]]];
 const SPORNE_VRSTVY = [
-  { id: 'sporne_hranice_plne', vzor: 'boundary_2', filtr: ['==', ['get', 'druh'], 'plna'] },
-  { id: 'sporne_hranice_teckovane', vzor: 'boundary_disputed', filtr: ['==', ['get', 'druh'], 'sporna'] },
+  { id: 'sporne_hranice_plne', vzor: 'boundary_2', filtr: ['all', ['==', ['get', 'druh'], 'plna'], vRozsahu] },
+  { id: 'sporne_hranice_teckovane', vzor: 'boundary_disputed', filtr: ['all', ['==', ['get', 'druh'], 'sporna'], vRozsahu] },
   { id: 'sporne_nazvy_staty', vzor: 'label_country_3', filtr: ['==', ['get', 'vrstva'], 'stat'], minzoom: 3, maxzoom: 9 },
   { id: 'sporne_nazvy_oblasti', vzor: 'label_state', filtr: ['==', ['get', 'vrstva'], 'oblast'], minzoom: 3, maxzoom: 9 },
   { id: 'sporne_nazvy_golan', vzor: 'label_state', filtr: ['==', ['get', 'vrstva'], 'golan'], minzoom: 6, maxzoom: 12 },
