@@ -668,7 +668,7 @@ button.upravy-volba:hover:not(:disabled) { border-color: var(--modra); }
 /* Nástroje výběru a popisek nad mapou */
 .upravy-nastroje {
   position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 4; display: flex; gap: 4px;
-  background: var(--bila); border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 12, 50, 0.2); padding: 5px; max-width: calc(100% - 120px); flex-wrap: wrap;
+  background: var(--bila); border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 12, 50, 0.2); padding: 5px; max-width: calc(100% - 120px); flex-wrap: wrap; width: max-content;
 }
 .upravy-nastroje[hidden] { display: none; }
 .upravy-nastroje button {
@@ -784,3 +784,28 @@ button.upravy-volba:hover:not(:disabled) { border-color: var(--modra); }
 .kvet-navic { border-top: 1px solid var(--cara); padding-top: 6px; }
 .kvet-navic h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 0 0 4px; }
 .kvet-navic .radek { margin: 0; }
+
+/* ---- Ikony Font Awesome (vlastní, css/vendor/fontawesome) */
+.ikona { font-size: 0.95em; line-height: 1; flex: none; }
+.tl .ikona + span, .tl > .ikona:first-child { margin-right: 0; }
+.tl:has(> .ikona) { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.tl-ikona .ikona { font-size: 14px; }
+.ikona-sipka { font-size: 0.8em; opacity: 0.75; }
+.karty button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 9px 4px 8px; }
+.karty button .ikona { font-size: 15px; }
+.sipka .ikona { font-size: 11px; }
+.lupa-ikona { color: var(--text-2); font-size: 13px; }
+.zavrit .ikona { font-size: 16px; }
+.tl-tecky .ikona, .tri-tecky .ikona { font-size: 14px; }
+.tl.upravy-akce { display: inline-flex; align-items: center; justify-content: flex-start; gap: 9px; text-align: left; padding-left: 12px; }
+.upravy-akce .ikona { width: 16px; text-align: center; color: var(--modra); }
+.upravy-akce:disabled .ikona { color: inherit; }
+.upravy-nastroje button { display: inline-flex; align-items: center; gap: 7px; }
+.upravy-polozka .znak .ikona { font-size: 15px; }
+.upravy-zalozka .ikona { margin-right: 2px; }
+.upravy-volba strong .ikona { margin-right: 6px; color: var(--modra); }
+.upravy-volby.dve { display: grid; grid-template-columns: 1fr 1fr; }
+.upravy-podnadpis { font-size: 13px; margin: 14px 0 2px; color: var(--text-2); font-weight: 600; }
+.upravy-vnoreny { margin: 0 0 4px 30px; width: calc(100% - 30px); }
+.polozka-menu .texty .ikona { margin-right: 6px; color: var(--modra); }
+.tl-ikona-mala .ikona { font-size: 15px; }

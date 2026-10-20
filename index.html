@@ -6,6 +6,9 @@
   <title>Mapový editor</title>
   <meta name="robots" content="noindex">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/vendor/fontawesome/css/fontawesome.min.css">
+  <link rel="stylesheet" href="css/vendor/fontawesome/css/solid.min.css">
+  <link rel="stylesheet" href="css/vendor/fontawesome/css/regular.min.css">
   <link rel="stylesheet" href="css/vendor/blossom-color-picker.css">
   <link rel="stylesheet" href="css/editor.css">
 </head>
@@ -13,34 +16,32 @@
   <header class="lista">
     <div class="znacka">Mapový editor</div>
     <button id="mapy" class="tl tl-mapy" title="Týmové mapy a nová mapa (Ctrl+O)">
-      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
-      Mapy
+      <i class="fa-solid fa-table-cells-large ikona" aria-hidden="true"></i> Mapy
     </button>
     <button id="novy-zacatek" class="tl tl-zacatek" title="Výchozí mapa a nastavení od začátku – jde vrátit tlačítkem Zpět">
-      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4M2.5 2v3.5H6"/></svg>
-      Nový začátek
+      <i class="fa-solid fa-arrow-rotate-left ikona" aria-hidden="true"></i> Nový začátek
     </button>
     <input id="nazev-sablony" class="nazev" placeholder="Název mapy" aria-label="Název mapy">
     <span id="stav-ulozeni" class="stav-ulozeni"></span>
     <div class="akce">
       <button id="stav-tabulky" class="tl kontrolka" title="Týmová tabulka – kliknutím načíst mapy znovu"><span class="tecka"></span>Tabulka</button>
-      <button id="zpet" class="tl tl-ikona" title="Zpět (Ctrl+Z)" aria-label="Zpět">↶</button>
-      <button id="znovu" class="tl tl-ikona" title="Znovu (Ctrl+Y)" aria-label="Znovu">↷</button>
-      <button id="historie" class="tl" title="Historie úprav – vrátit o více kroků">Historie</button>
-      <button id="ulozit" class="tl tl-ulozit" title="Uložit mapu (Ctrl+S)">Uložit</button>
-      <button id="stahnout" class="tl tl-hlavni">Stáhnout style.json</button>
-      <button id="ucet" class="tl ucet" aria-haspopup="menu" title="Tvoje jméno, odkaz pro kolegy, odhlášení"><span id="ucet-pismeno" class="pismeno" aria-hidden="true">?</span><span id="ucet-jmeno">Bez jména</span><span class="sipka-dolu" aria-hidden="true">▾</span></button>
+      <button id="zpet" class="tl tl-ikona" title="Zpět (Ctrl+Z)" aria-label="Zpět"><i class="fa-solid fa-reply ikona" aria-hidden="true"></i></button>
+      <button id="znovu" class="tl tl-ikona" title="Znovu (Ctrl+Y)" aria-label="Znovu"><i class="fa-solid fa-share ikona" aria-hidden="true"></i></button>
+      <button id="historie" class="tl" title="Historie úprav – vrátit o více kroků"><i class="fa-solid fa-clock-rotate-left ikona" aria-hidden="true"></i> Historie</button>
+      <button id="ulozit" class="tl tl-ulozit" title="Uložit mapu (Ctrl+S)"><i class="fa-regular fa-floppy-disk ikona" aria-hidden="true"></i> Uložit</button>
+      <button id="stahnout" class="tl tl-hlavni"><i class="fa-solid fa-download ikona" aria-hidden="true"></i> Stáhnout style.json</button>
+      <button id="ucet" class="tl ucet" aria-haspopup="menu" title="Tvoje jméno, odkaz pro kolegy, odhlášení"><span id="ucet-pismeno" class="pismeno" aria-hidden="true">?</span><span id="ucet-jmeno">Bez jména</span><span class="sipka-dolu" aria-hidden="true"><i class="fa-solid fa-caret-down ikona" aria-hidden="true"></i></span></button>
     </div>
   </header>
 
   <main class="plocha">
     <aside class="panel">
       <nav class="karty" role="tablist">
-        <button data-karta="vrstvy" class="aktivni">Vrstvy</button>
-        <button data-karta="nazvy">Názvy</button>
-        <button data-karta="maska">Maska</button>
-        <button data-karta="data">Data</button>
-        <button data-karta="upravy" title="Úpravy dat: zjednodušení, sloučení a vyčištění hranic (vlastní mapshaper)">Úpravy</button>
+        <button data-karta="vrstvy" class="aktivni"><i class="fa-solid fa-layer-group ikona" aria-hidden="true"></i><span>Vrstvy</span></button>
+        <button data-karta="nazvy"><i class="fa-solid fa-font ikona" aria-hidden="true"></i><span>Názvy</span></button>
+        <button data-karta="maska"><i class="fa-solid fa-crop ikona" aria-hidden="true"></i><span>Maska</span></button>
+        <button data-karta="data"><i class="fa-solid fa-chart-simple ikona" aria-hidden="true"></i><span>Data</span></button>
+        <button data-karta="upravy" title="Úpravy dat: zjednodušení, sloučení, ořez a vyčištění hranic (vlastní mapshaper)"><i class="fa-solid fa-pen-ruler ikona" aria-hidden="true"></i><span>Úpravy</span></button>
       </nav>
       <section id="obsah-panelu" class="obsah-panelu"></section>
     </aside>

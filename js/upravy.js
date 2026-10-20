@@ -10,6 +10,7 @@ import {
   nazevPrvku, idPrvku, hranice, pocetBodu, teziste, bodVPolygonu, velikost, pocet, prvku,
   druhGeometrie, kmlNaGeojson, bezDiakritiky, proBody, plocha,
 } from './geodata.js';
+import { ikona } from './ikony.js';
 
 // Databáze GeoJSONů z OSM (úložiště mek2424/mapova-data, GitHub Pages).
 export const ADRESA_DATABAZE = 'https://mek2424.github.io/mapova-data/';
@@ -31,6 +32,7 @@ export function vytvorUpravy(ctx) {
     vyber: new Set(), nastroj: 'klik', pohled: 'hlavni', porovnat: false, prace: null,
     hledat: '', miraNahled: null, nahled: null, sloucit: { zpusob: 'vybrane', sloupec: '', nazev: '', id: '', ponechat: false, mezery: true },
     pridat: null, cisteni: null, jenIdNazev: true,
+    orez: { rezim: 'ponechat', podle: 'vrstva', vrstva: null, bbox: null, jenVybrane: false }, kresliOrez: false,
   };
 
   const aktivni = () => u.vrstvy.find((v) => v.id === u.aktivni) || null;
@@ -385,6 +387,7 @@ export function vytvorUpravy(ctx) {
     ui.vyber = novy;
     ui.nahled = null;
     if (ui.pohled === 'sloucit') pripravNahledSlouceni();
+    if (ui.pohled === 'orez' && ui.orez.jenVybrane) pripravNahleduOrezu();
     aplikujVyber();
     ctx.vykresliPanel();
   }
@@ -527,7 +530,7 @@ export function vytvorUpravy(ctx) {
     const canvas = mapa.getCanvasContainer();
     canvas.addEventListener('mousedown', (e) => {
       if (ctx.karta() !== 'upravy' || e.button !== 0 || !aktivni()) return;
-      const rezim = ui.nastroj === 'klik' ? (e.shiftKey ? 'obdelnik' : null) : ui.nastroj;
+      const rezim = ui.kresliOrez ? 'obdelnik' : ui.nastroj === 'klik' ? (e.shiftKey ? 'obdelnik' : null) : ui.nastroj;
       if (!rezim) return;
       e.preventDefault(); e.stopPropagation();
       mapa.dragPan.disable();
@@ -542,6 +545,18 @@ export function vytvorUpravy(ctx) {
         platno.hidden = true;
         const body = kresleni.body; kresleni.body = null;
         const posun = body[1] ? Math.hypot(body[1][0] - body[0][0], body[1][1] - body[0][1]) : 0;
+        if (ui.kresliOrez) {
+          // Obdélník pro ořez: rohy na mapě → zeměpisné souřadnice.
+          ui.kresliOrez = false;
+          mapa.getCanvas().style.cursor = '';
+          if (body[1] && posun >= 4) {
+            const a = mapa.unproject(body[0]); const b2 = mapa.unproject(body[1]);
+            ui.orez.bbox = [Math.min(a.lng, b2.lng), Math.min(a.lat, b2.lat), Math.max(a.lng, b2.lng), Math.max(a.lat, b2.lat)];
+            ui.orez.podle = 'obdelnik';
+            pripravNahleduOrezu();
+          } else ctx.vykresliPanel();
+          return;
+        }
         if (rezim === 'obdelnik' && posun < 4 && ui.nastroj === 'klik') {
           // Shift + klik bez tažení: přidat nebo odebrat jeden prvek.
           const f = prvekPod({ x: body[0][0], y: body[0][1] });
@@ -596,21 +611,21 @@ export function vytvorUpravy(ctx) {
     lista.hidden = !zap;
     if (!zap) { popisek.hidden = true; return; }
     const v = aktivni();
-    const nastroj = (k, text, titulek) => h('button', {
+    const nastroj = (k, ik, text, titulek) => h('button', {
       type: 'button', 'aria-pressed': String(ui.nastroj === k), class: ui.nastroj === k ? 'zapnuto' : '', title: titulek,
       onclick: () => { ui.nastroj = k; obnovListu(); ctx.mapa().getCanvas().style.cursor = k === 'klik' ? '' : 'crosshair'; },
-    }, text);
+    }, ikona(ik), h('span', {}, text));
     lista.replaceChildren(
-      nastroj('klik', 'Klik', 'Klik vybere prvek, Shift + klik přidá nebo odebere, Shift + tažení vybere obdélníkem. Mapou jde normálně posouvat.'),
-      nastroj('obdelnik', 'Obdélník', 'Tažením vyber všechny prvky v obdélníku (Shift přidá k výběru). Mapou posuneš v režimu Klik.'),
-      nastroj('laso', 'Laso', 'Obtáhni prvky – vyberou se ty, jejichž střed je uvnitř (Shift přidá k výběru).'),
+      nastroj('klik', 'arrow-pointer', 'Klik', 'Klik vybere prvek, Shift + klik přidá nebo odebere, Shift + tažení vybere obdélníkem. Mapou jde normálně posouvat.'),
+      nastroj('obdelnik', 'vector-square', 'Obdélník', 'Tažením vyber všechny prvky v obdélníku (Shift přidá k výběru). Mapou posuneš v režimu Klik.'),
+      nastroj('laso', 'draw-polygon', 'Laso', 'Obtáhni prvky – vyberou se ty, jejichž střed je uvnitř (Shift přidá k výběru).'),
       h('span', { class: 'oddelovac', 'aria-hidden': 'true' }),
       h('button', {
         type: 'button', 'aria-pressed': String(ui.porovnat && !!(v && v.mira > 0)), class: ui.porovnat && v && v.mira > 0 ? 'zapnuto' : '', disabled: !(v && v.mira > 0),
         title: v && v.mira > 0 ? 'Červená čárkovaná čára ukáže původní tvar před zjednodušením' : 'Porovnání má smysl až po zjednodušení',
         onclick: () => { ui.porovnat = !ui.porovnat; obnovListu(); ctx.naplanujMapu(); },
-      }, 'Porovnat s původní'),
-      h('button', { type: 'button', onclick: () => priblizNa(aktivni(), ui.vyber.size ? ui.vyber : null) }, ui.vyber.size ? 'Přiblížit na výběr' : 'Přiblížit na vrstvu'),
+      }, ikona('code-compare'), h('span', {}, 'Porovnat s původní')),
+      h('button', { type: 'button', onclick: () => priblizNa(aktivni(), ui.vyber.size ? ui.vyber : null) }, ikona('magnifying-glass-plus'), h('span', {}, ui.vyber.size ? 'Přiblížit na výběr' : 'Přiblížit na vrstvu')),
     );
     ctx.mapa().getCanvas().style.cursor = ui.nastroj === 'klik' ? '' : 'crosshair';
   }
@@ -869,7 +884,7 @@ export function vytvorUpravy(ctx) {
     return [
       prace,
       blokVrstev(),
-      v && ui.pohled === 'sloucit' ? blokSlouceni(v) : v ? [blokVyberu(v), blokZjednoduseni(v), blokAkci(v)] : null,
+      v && ui.pohled === 'sloucit' ? blokSlouceni(v) : v && ui.pohled === 'orez' ? blokOrezu(v) : v ? [blokVyberu(v), blokZjednoduseni(v), blokAkci(v)] : null,
       v ? blokVystupu(v) : null,
     ];
   }
@@ -898,7 +913,7 @@ export function vytvorUpravy(ctx) {
     return [
       h('h2', {}, 'Úpravy dat'),
       h('p', { class: 'upravy-uvod' }, 'Hranice států, krajů, obcí nebo vlastní soubory. Zjednodušíš je, sloučíš a pošleš na mapu nebo stáhneš pro Flourish.'),
-      h('button', { class: 'tl tl-modre velke upravy-pridat', onclick: () => otevriPridat() }, '+ Přidat data'),
+      h('button', { class: 'tl tl-modre velke upravy-pridat', onclick: () => otevriPridat() }, ikona('plus'), ' Přidat data'),
       zonaPretazeni([h('strong', {}, 'Nebo sem přetáhni soubor'), h('small', {}, FORMATY)]),
       ctx.vlastniData() || ctx.stav().recept.maska.oblasti.length ? [
         h('h2', {}, 'Z mapy'),
@@ -921,7 +936,7 @@ export function vytvorUpravy(ctx) {
 
   function blokVrstev() {
     return [
-      h('div', { class: 'upravy-hlavicka' }, h('h2', {}, 'Vrstvy'), h('button', { class: 'tl tl-male', onclick: () => otevriPridat() }, '+ Přidat data')),
+      h('div', { class: 'upravy-hlavicka' }, h('h2', {}, 'Vrstvy'), h('button', { class: 'tl tl-male', onclick: () => otevriPridat() }, ikona('plus'), ' Přidat data')),
       h('div', { class: 'upravy-vrstvy' }, u.vrstvy.map((v) => {
         const akt = v.id === u.aktivni;
         return h('div', { class: `upravy-vrstva${akt ? ' aktivni' : ''}${v.skryta ? ' skryta' : ''}` },
@@ -934,19 +949,15 @@ export function vytvorUpravy(ctx) {
             class: 'tl-ikona-mala', 'aria-label': v.skryta ? 'Zobrazit vrstvu' : 'Skrýt vrstvu', title: v.skryta ? 'Zobrazit' : 'Skrýt',
             onclick: () => upravVrstvu(v.id, { skryta: !v.skryta }, v.skryta ? 'zobrazení vrstvy' : 'skrytí vrstvy'),
           }, oko(!v.skryta)),
-          h('button', { class: 'tl-ikona-mala', 'aria-label': 'Další akce s vrstvou', 'aria-haspopup': 'menu', onclick: (e) => menuVrstvy(e.currentTarget, v) }, '⋯'),
+          h('button', { class: 'tl-ikona-mala', 'aria-label': 'Další akce s vrstvou', 'aria-haspopup': 'menu', onclick: (e) => menuVrstvy(e.currentTarget, v) }, ikona('ellipsis')),
         );
       })),
     ];
   }
   function oko(otevrene) {
-    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    s.setAttribute('width', '18'); s.setAttribute('height', '18'); s.setAttribute('viewBox', '0 0 18 18'); s.setAttribute('aria-hidden', 'true');
-    s.innerHTML = otevrene
-      ? '<path d="M1.5 9 C4 4.5 14 4.5 16.5 9 C14 13.5 4 13.5 1.5 9 Z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="9" r="2.3" fill="currentColor"/>'
-      : '<path d="M1.5 9 C4 4.5 14 4.5 16.5 9 C14 13.5 4 13.5 1.5 9 Z" fill="none" stroke="currentColor" stroke-width="1.4" opacity="0.5"/><path d="M3 15 L15 3" stroke="currentColor" stroke-width="1.6"/>';
-    return s;
+    return ikona(otevrene ? 'eye' : 'eye-slash', 'regular');
   }
+
   function menuVrstvy(kotva, v) {
     ctx.otevriPopup(kotva, (zavri) => h('div', { class: 'menu', role: 'menu' },
       ctx.polozkaMenu('Přejmenovat…', () => {
@@ -954,7 +965,7 @@ export function vytvorUpravy(ctx) {
         const nazev = prompt('Nový název vrstvy:', v.nazev);
         if (nazev && nazev.trim() && nazev !== v.nazev) upravVrstvu(v.id, { nazev: nazev.trim() }, 'přejmenování vrstvy');
       }),
-      ctx.polozkaMenu('Přiblížit na vrstvu', () => { zavri(); priblizNa(v); }),
+      ctx.polozkaMenu([ikona('magnifying-glass-plus'), ' Přiblížit na vrstvu'], () => { zavri(); priblizNa(v); }),
       ctx.polozkaMenu('Duplikovat', () => {
         zavri();
         const kopie = { ...v, id: novyId(), nazev: `${v.nazev} (kopie)`, barva: volnaBarva() };
@@ -999,7 +1010,7 @@ export function vytvorUpravy(ctx) {
         h('button', { class: 'odkaz-tl', disabled: !n, onclick: () => nastavVyber([]) }, 'Zrušit')),
       n ? h('div', { class: 'upravy-stitky' },
         nazvy.map(({ i, t }) => h('span', { class: 'upravy-stitek' }, t,
-          h('button', { 'aria-label': `Odebrat ${t} z výběru`, onclick: () => nastavVyber([i], { prepnout: true }) }, '×'))),
+          h('button', { 'aria-label': `Odebrat ${t} z výběru`, onclick: () => nastavVyber([i], { prepnout: true }) }, ikona('xmark')))),
         n > 12 ? h('span', { class: 'upravy-stitek dalsi' }, `a dalších ${pocet(n - 12)}`) : null)
         : h('p', { class: 'poznamka' }, 'Klikni na prvek v mapě. Shift + klik přidá další, Shift + tažení vybere obdélníkem.'),
       hledat, nalezeneBox,
@@ -1054,20 +1065,170 @@ export function vytvorUpravy(ctx) {
 
   function blokAkci(v) {
     const n = ui.vyber.size;
-    const tl = (text, fn, { hlavni = false, vypnuto = false, titulek = '' } = {}) => h('button', {
+    const tl = (text, fn, { hlavni = false, vypnuto = false, titulek = '', ik = null } = {}) => h('button', {
       class: `tl upravy-akce${hlavni ? ' hlavni' : ''}`, disabled: vypnuto || !!ui.prace, title: titulek, onclick: fn,
-    }, text);
+    }, ik ? ikona(ik) : null, h('span', {}, text));
     const plochy = /plochy|smíšené/.test(v.info.druh);
     return [
       h('h2', {}, 'Upravit'),
       h('div', { class: 'upravy-mrizka' },
-        tl('Sloučit vybrané', () => otevriSlouceni('vybrane'), { hlavni: true, vypnuto: n < 2 || !plochy, titulek: n < 2 ? 'Vyber aspoň dva prvky' : 'Spojí vybrané plochy do jedné (dissolve)' }),
-        tl('Sloučit podle sloupce…', () => otevriSlouceni('sloupec'), { vypnuto: !plochy, titulek: 'Prvky se stejnou hodnotou ve sloupci se spojí (např. obce podle okresu)' }),
-        tl('Spojit vrstvy…', () => otevriSpojeni(v), { vypnuto: u.vrstvy.length < 2, titulek: u.vrstvy.length < 2 ? 'Potřebuješ aspoň dvě vrstvy' : 'Spojí prvky několika vrstev do jedné (merge)' }),
-        tl('Vyčistit', vycisti, { vypnuto: !plochy, titulek: 'Opraví překryvy, mezery mezi sousedy a chybné tvary (clean)' }),
-        tl('Ponechat jen vybrané', () => ponechatVybrane(true), { vypnuto: !n, titulek: n ? '' : 'Nejdřív něco vyber' }),
-        tl('Smazat vybrané', () => ponechatVybrane(false), { vypnuto: !n, titulek: n ? '' : 'Nejdřív něco vyber' })),
+        tl('Sloučit vybrané', () => otevriSlouceni('vybrane'), { ik: 'object-group', hlavni: true, vypnuto: n < 2 || !plochy, titulek: n < 2 ? 'Vyber aspoň dva prvky' : 'Spojí vybrané plochy do jedné (dissolve)' }),
+        tl('Sloučit podle sloupce…', () => otevriSlouceni('sloupec'), { ik: 'table-columns', vypnuto: !plochy, titulek: 'Prvky se stejnou hodnotou ve sloupci se spojí (např. obce podle okresu)' }),
+        tl('Oříznout…', otevriOrez, { ik: 'crop-simple', hlavni: true, vypnuto: !plochy, titulek: 'Opak sloučení: ponechat jen část uvnitř jiné vrstvy, obdélníku nebo výřezu mapy – nebo ji vyříznout' }),
+        tl('Rozdělit na části', rozdel, { ik: 'object-ungroup', vypnuto: !plochy, titulek: 'Prvek o více částech (ostrovy, enklávy) se rozdělí na samostatné prvky' }),
+        tl('Spojit vrstvy…', () => otevriSpojeni(v), { ik: 'layer-group', vypnuto: u.vrstvy.length < 2, titulek: u.vrstvy.length < 2 ? 'Potřebuješ aspoň dvě vrstvy' : 'Spojí prvky několika vrstev do jedné (merge)' }),
+        tl('Vyčistit', vycisti, { ik: 'broom', vypnuto: !plochy, titulek: 'Opraví překryvy, mezery mezi sousedy a chybné tvary (clean)' }),
+        tl('Ponechat jen vybrané', () => ponechatVybrane(true), { ik: 'filter', vypnuto: !n, titulek: n ? '' : 'Nejdřív něco vyber' }),
+        tl('Smazat vybrané', () => ponechatVybrane(false), { ik: 'trash-can', vypnuto: !n, titulek: n ? '' : 'Nejdřív něco vyber' })),
     ];
+  }
+
+  // ---- Ořez (opak sloučení): ponechat jen část uvnitř tvaru, nebo ji vyříznout.
+  // Tvar = jiná vrstva (její plochy), nakreslený obdélník, nebo aktuální výřez mapy.
+  const plochyVrstvy = (x) => /plochy|smíšené/.test(x.info.druh);
+  function tvarOrezu(plne) {
+    const o = ui.orez;
+    if (o.podle === 'vrstva') {
+      const x = u.vrstvy.find((y) => y.id === o.vrstva);
+      if (!x) return null;
+      const zdroj = plne ? x.zaklad : x.aktualni;
+      const fc = { type: 'FeatureCollection', features: zdroj.features.filter((f) => /Polygon/.test(f.geometry?.type || '')).map((f) => ({ type: 'Feature', properties: {}, geometry: f.geometry })) };
+      return fc.features.length ? { argument: 'orez.json', vstupy: { 'orez.json': JSON.stringify(fc) } } : null;
+    }
+    let b = o.podle === 'obdelnik' ? o.bbox : null;
+    if (o.podle === 'vyrez') {
+      const m = ctx.mapa().getBounds();
+      b = [m.getWest(), m.getSouth(), m.getEast(), m.getNorth()];
+    }
+    return b ? { argument: `bbox=${b.map((x) => x.toFixed(6)).join(',')}` } : null;
+  }
+
+  // Spustí ořez nad vrstvou. Prvky mimo výběr (u „jen vybrané“) zůstanou beze změny,
+  // prvky, ze kterých nic nezbyde, zmizí. Vrací { features, odebrano, zmeneno }.
+  async function orizni(v, plne) {
+    const tvar = tvarOrezu(plne);
+    if (!tvar) throw new Error(ui.orez.podle === 'vrstva' ? 'vyber vrstvu s plochami' : 'nakresli obdélník na mapě');
+    const zdroj = plne ? v.zaklad : v.aktualni;
+    const jen = ui.orez.jenVybrane && ui.vyber.size ? ui.vyber : null;
+    const vstup = { type: 'FeatureCollection', features: [] };
+    zdroj.features.forEach((f, i) => { if (f.geometry && (!jen || jen.has(i))) vstup.features.push({ ...f, properties: { ...f.properties, _poradi: i } }); });
+    const prikaz = `-i vstup.json ${ui.orez.rezim === 'ponechat' ? '-clip' : '-erase'} ${tvar.argument} -o vystup.json format=geojson geojson-type=FeatureCollection`;
+    const vystup = zTextu((await mapshaper(prikaz, { 'vstup.json': JSON.stringify(vstup), ...(tvar.vstupy || {}) }))['vystup.json']);
+    const vysledky = new Map();
+    for (const f of vystup.features) if (f.geometry) vysledky.set(f.properties._poradi, f.geometry);
+    const features = []; let odebrano = 0; let zmeneno = 0;
+    zdroj.features.forEach((f, i) => {
+      if (jen && !jen.has(i)) { features.push(f); return; }
+      if (!f.geometry) { features.push(f); return; }
+      const g = vysledky.get(i);
+      if (!g) { odebrano++; return; }
+      if (JSON.stringify(g) !== JSON.stringify(f.geometry)) zmeneno++;
+      features.push({ ...f, geometry: g });
+    });
+    return { features, odebrano, zmeneno };
+  }
+
+  async function pripravNahleduOrezu() {
+    const v = aktivni();
+    ui.nahled = null;
+    if (v && ui.pohled === 'orez') {
+      try {
+        const { features } = await orizni(v, false);
+        ui.nahled = { type: 'FeatureCollection', features: features.filter((f) => f.geometry).map((f) => ({ type: 'Feature', properties: {}, geometry: f.geometry })) };
+      } catch (e) { console.warn(e); }
+    }
+    ctx.naplanujMapu();
+    ctx.vykresliPanel();
+  }
+
+  function otevriOrez() {
+    const v = aktivni();
+    const jine = u.vrstvy.filter((x) => x.id !== v.id && plochyVrstvy(x));
+    if (!jine.some((x) => x.id === ui.orez.vrstva)) ui.orez.vrstva = jine[0]?.id || null;
+    if (!ui.orez.vrstva && ui.orez.podle === 'vrstva') ui.orez.podle = 'vyrez';
+    ui.orez.jenVybrane = ui.vyber.size > 0 && ui.orez.jenVybrane;
+    ui.pohled = 'orez';
+    ctx.vykresliPanel();
+    pripravNahleduOrezu();
+  }
+
+  async function provedOrez() {
+    const v = aktivni();
+    await pracuj('Ořezávám…', async () => {
+      const { features, odebrano, zmeneno } = await orizni(v, true);
+      if (!features.length) throw new Error('z vrstvy by nezbyl žádný prvek');
+      if (!odebrano && !zmeneno) { hlaska('Ořez nic nezměnil – vrstva leží celá uvnitř (nebo celá mimo) tvaru.'); return; }
+      const nova = await novyZaklad(v, { type: 'FeatureCollection', features });
+      ui.pohled = 'hlavni';
+      nahradVrstvu(nova, `${ui.orez.rezim === 'ponechat' ? 'ořez' : 'vyříznutí'} vrstvy ${v.nazev}`);
+      const kde = ui.orez.rezim === 'ponechat' ? 'venku' : 'uvnitř';
+      const tvar = (n) => (n === 1 ? ['ležel', 'celý', 'zmizel'] : n <= 4 ? ['ležely', 'celé', 'zmizely'] : ['leželo', 'celých', 'zmizelo']);
+      const casti = [];
+      if (zmeneno) casti.push(`upraveno ${prvku(zmeneno)}`);
+      if (odebrano) { const [l, c, z] = tvar(odebrano); casti.push(`${prvku(odebrano)} ${l} ${c} ${kde} a ${z}`); }
+      hlaska(`${ui.orez.rezim === 'ponechat' ? 'Oříznuto' : 'Vyříznuto'}: ${casti.join(', ')}.`, false, { akce: { text: 'Vrátit', fn: () => ctx.zpet(1) } });
+    });
+  }
+
+  function blokOrezu(v) {
+    const o = ui.orez;
+    const n = ui.vyber.size;
+    const jine = u.vrstvy.filter((x) => x.id !== v.id && plochyVrstvy(x));
+    const nastav = (zmeny) => { Object.assign(o, zmeny); pripravNahleduOrezu(); };
+    const volba = (skupina, k, hodnota, nadpis, popis, ik) => h('label', { class: `upravy-volba${o[k] === hodnota ? ' zvolena' : ''}` },
+      h('input', { type: 'radio', name: skupina, checked: o[k] === hodnota, onchange: () => nastav({ [k]: hodnota }) }),
+      h('span', {}, h('strong', {}, ik ? ikona(ik) : null, nadpis), popis ? h('small', {}, popis) : null));
+    const zpet = () => { ui.pohled = 'hlavni'; ui.nahled = null; ui.kresliOrez = false; prekresli(); };
+    return [
+      h('button', { class: 'odkaz-tl zpet-tl', onclick: zpet }, ikona('chevron-left'), ` Zpět na vrstvu ${v.nazev}`),
+      h('h2', {}, 'Oříznout'),
+      h('div', { class: 'upravy-volby dve', role: 'radiogroup', 'aria-label': 'Jak oříznout' },
+        volba('rezim-orezu', 'rezim', 'ponechat', 'Ponechat uvnitř', 'Co je venku, zmizí.', 'crop-simple'),
+        volba('rezim-orezu', 'rezim', 'vyriznout', 'Vyříznout', 'Co je uvnitř, zmizí.', 'scissors')),
+      h('h3', { class: 'upravy-podnadpis' }, 'Podle čeho'),
+      h('div', { class: 'upravy-volby', role: 'radiogroup', 'aria-label': 'Podle čeho oříznout' },
+        volba('podle-orezu', 'podle', 'vrstva', 'Jiné vrstvy', jine.length ? null : 'Přidej vrstvu s plochami, třeba kraj nebo CHKO.', 'layer-group'),
+        o.podle === 'vrstva' && jine.length ? h('select', { class: 'pole upravy-vnoreny', 'aria-label': 'Vrstva pro ořez', onchange: (e) => nastav({ vrstva: e.target.value }) },
+          jine.map((x) => h('option', { value: x.id, selected: x.id === o.vrstva }, `${x.nazev} (${prvku(x.info.prvku)})`))) : null,
+        volba('podle-orezu', 'podle', 'obdelnik', 'Obdélníku na mapě', o.bbox ? `${o.bbox.map((x) => x.toFixed(2).replace('.', ',')).join(' · ')}` : 'Nakresli ho tažením přes mapu.', 'vector-square'),
+        o.podle === 'obdelnik' ? h('button', {
+          class: `tl tl-male upravy-vnoreny${ui.kresliOrez ? ' tl-zapnuto' : ''}`,
+          onclick: () => { ui.kresliOrez = !ui.kresliOrez; ctx.mapa().getCanvas().style.cursor = ui.kresliOrez ? 'crosshair' : ''; ctx.vykresliPanel(); },
+        }, ikona('pen'), ui.kresliOrez ? ' Táhni přes mapu…' : o.bbox ? ' Nakreslit znovu' : ' Nakreslit obdélník') : null,
+        volba('podle-orezu', 'podle', 'vyrez', 'Výřezu mapy', 'Co je teď vidět v okně mapy.', 'expand')),
+      n ? h('label', { class: 'prepinac' }, h('input', { type: 'checkbox', checked: o.jenVybrane, onchange: (e) => nastav({ jenVybrane: e.target.checked }) }), `Jen vybrané prvky (${pocet(n)})`) : null,
+      h('div', { class: 'tlacitka' },
+        h('button', { class: 'tl tl-modre velke', disabled: !!ui.prace || !tvarOrezu(false), onclick: provedOrez }, ikona(o.rezim === 'ponechat' ? 'crop-simple' : 'scissors'), o.rezim === 'ponechat' ? ' Oříznout' : ' Vyříznout'),
+        h('button', { class: 'tl velke', onclick: zpet }, 'Zrušit')),
+      h('p', { class: 'poznamka' }, ui.nahled ? 'Na mapě vidíš výsledek předem (čárkovaně). Jde to vrátit tlačítkem Zpět.' : 'Náhled výsledku se ukáže na mapě čárkovaně.'),
+    ];
+  }
+
+  // Rozdělení: z prvku o více částech (ostrovy, enklávy) se stane několik samostatných prvků.
+  async function rozdel() {
+    const v = aktivni();
+    const jen = ui.vyber.size ? ui.vyber : null;
+    await pracuj('Rozděluji…', async () => {
+      const vstup = { type: 'FeatureCollection', features: [] };
+      v.zaklad.features.forEach((f, i) => { if (f.geometry && (!jen || jen.has(i))) vstup.features.push({ ...f, properties: { ...f.properties, _poradi: i } }); });
+      const vystup = zTextu((await mapshaper('-i vstup.json -explode -o vystup.json format=geojson geojson-type=FeatureCollection', { 'vstup.json': JSON.stringify(vstup) }))['vystup.json']);
+      const casti = new Map();
+      for (const f of vystup.features) {
+        const k = f.properties._poradi; delete f.properties._poradi;
+        casti.set(k, [...(casti.get(k) || []), f]);
+      }
+      const features = []; let pribylo = 0;
+      v.zaklad.features.forEach((f, i) => {
+        const c = casti.get(i);
+        if (!c) { features.push(f); return; }
+        pribylo += c.length - 1;
+        c.forEach((x, j) => features.push(c.length > 1 ? { ...x, properties: { ...x.properties, nazev: `${nazevPrvku(x.properties) || 'Část'} (${j + 1})` } } : x));
+      });
+      if (!pribylo) { hlaska('Není co rozdělit – každý prvek má jen jednu část.'); return; }
+      const nova = await novyZaklad(v, { type: 'FeatureCollection', features });
+      nahradVrstvu(nova, `rozdělení ${v.nazev} na části`);
+      hlaska(`Rozděleno: přibylo ${prvku(pribylo)}.`, false, { akce: { text: 'Vrátit', fn: () => ctx.zpet(1) } });
+    });
   }
 
   function sloupceVrstvy(v) {
@@ -1099,7 +1260,7 @@ export function vytvorUpravy(ctx) {
       h('span', {}, h('strong', {}, nadpis), h('small', {}, popis)));
     const nazvyVyberu = [...ui.vyber].slice(0, 6).map((i) => nazevPrvku(v.zaklad.features[i]?.properties)).filter(Boolean).join(', ');
     return [
-      h('button', { class: 'odkaz-tl zpet-tl', onclick: () => { ui.pohled = 'hlavni'; ui.nahled = null; prekresli(); } }, `‹ Zpět na vrstvu ${v.nazev}`),
+      h('button', { class: 'odkaz-tl zpet-tl', onclick: () => { ui.pohled = 'hlavni'; ui.nahled = null; prekresli(); } }, ikona('chevron-left'), ` Zpět na vrstvu ${v.nazev}`),
       h('h2', {}, 'Sloučit prvky'),
       h('div', { class: 'upravy-volby', role: 'radiogroup', 'aria-label': 'Co sloučit' },
         volba('vybrane', 'Vybrané do jednoho', n >= 2 ? `${prvku(n)}: ${nazvyVyberu}${n > 6 ? '…' : ''}` : 'Nejdřív vyber v mapě aspoň dva prvky (Shift + klik).'),
@@ -1139,28 +1300,28 @@ export function vytvorUpravy(ctx) {
     const n = ui.vyber.size;
     const co = n ? `${pocet(n)} ${n === 1 ? 'vybraný prvek' : n <= 4 ? 'vybrané prvky' : 'vybraných prvků'}` : `celou vrstvu (${prvku(v.info.prvku)})`;
     return h('div', { class: 'upravy-pata' },
-      h('button', { class: 'tl tl-modre velke', 'aria-haspopup': 'menu', disabled: !!ui.prace, onclick: (e) => menuPoslat(e.currentTarget, co) }, 'Poslat na mapu ▾'),
-      h('button', { class: 'tl velke', 'aria-haspopup': 'menu', disabled: !!ui.prace, onclick: (e) => menuStahnout(e.currentTarget, co) }, 'Stáhnout ▾'));
+      h('button', { class: 'tl tl-modre velke', 'aria-haspopup': 'menu', disabled: !!ui.prace, onclick: (e) => menuPoslat(e.currentTarget, co) }, ikona('map-location-dot'), ' Poslat na mapu ', ikona('caret-down', 'solid', 'ikona-sipka')),
+      h('button', { class: 'tl velke', 'aria-haspopup': 'menu', disabled: !!ui.prace, onclick: (e) => menuStahnout(e.currentTarget, co) }, ikona('download'), ' Stáhnout ', ikona('caret-down', 'solid', 'ikona-sipka')));
   }
   const polozka = (znacka, nazev, popis, fn) => h('button', { class: 'upravy-polozka', role: 'menuitem', onclick: fn },
-    h('span', { class: 'znak', 'aria-hidden': 'true' }, znacka), h('span', {}, h('strong', {}, nazev), h('small', {}, popis)));
+    h('span', { class: 'znak', 'aria-hidden': 'true' }, ikona(znacka)), h('span', {}, h('strong', {}, nazev), h('small', {}, popis)));
   function menuPoslat(kotva, co) {
     ctx.otevriPopup(kotva, (zavri) => [
       h('h3', {}, `Poslat ${co}`),
       h('div', { class: 'menu', role: 'menu' },
-        polozka('D', 'Jako zkušební data', 'Na kartě Data, obarvené jednou barvou, kategoriemi nebo škálou. Nahradí dosavadní vlastní data.', () => { zavri(); poslatJakoData(false); }),
-        ctx.vlastniData() ? polozka('+', 'Přidat k datům na mapě', 'Ponechá vlastní data, která už na mapě jsou, a přidá tato.', () => { zavri(); poslatJakoData(true); }) : null,
-        polozka('M', 'Jako masku', 'Mapa se ořízne nebo zvýrazní na tyto oblasti. Maska je součástí stylu, proto se v případě potřeby zjednoduší.', () => { zavri(); poslatJakoMasku(); })),
+        polozka('table-list', 'Jako zkušební data', 'Na kartě Data, obarvené jednou barvou, kategoriemi nebo škálou. Nahradí dosavadní vlastní data.', () => { zavri(); poslatJakoData(false); }),
+        ctx.vlastniData() ? polozka('circle-plus', 'Přidat k datům na mapě', 'Ponechá vlastní data, která už na mapě jsou, a přidá tato.', () => { zavri(); poslatJakoData(true); }) : null,
+        polozka('crop', 'Jako masku', 'Mapa se ořízne nebo zvýrazní na tyto oblasti. Maska je součástí stylu, proto se v případě potřeby zjednoduší.', () => { zavri(); poslatJakoMasku(); })),
     ]);
   }
   function menuStahnout(kotva, co) {
     ctx.otevriPopup(kotva, (zavri) => [
       h('h3', {}, `Stáhnout ${co}`),
       h('div', { class: 'menu', role: 'menu' },
-        polozka('G', 'GeoJSON', 'Pro Flourish a většinu nástrojů.', () => { zavri(); stahni('geojson'); }),
-        polozka('T', 'TopoJSON', 'Menší soubor, sousedé sdílejí hranice.', () => { zavri(); stahni('topojson'); }),
-        polozka('S', 'Shapefile (zip)', 'Pro ArcGIS a QGIS.', () => { zavri(); stahni('shp'); }),
-        polozka('C', 'CSV', 'Jen tabulka sloupců, bez tvarů.', () => { zavri(); stahni('csv'); })),
+        polozka('file-code', 'GeoJSON', 'Pro Flourish a většinu nástrojů.', () => { zavri(); stahni('geojson'); }),
+        polozka('diagram-project', 'TopoJSON', 'Menší soubor, sousedé sdílejí hranice.', () => { zavri(); stahni('topojson'); }),
+        polozka('file-zipper', 'Shapefile (zip)', 'Pro ArcGIS a QGIS.', () => { zavri(); stahni('shp'); }),
+        polozka('file-csv', 'CSV', 'Jen tabulka sloupců, bez tvarů.', () => { zavri(); stahni('csv'); })),
       h('label', { class: 'prepinac' }, h('input', { type: 'checkbox', checked: ui.jenIdNazev, onchange: (e) => { ui.jenIdNazev = e.target.checked; } }), 'Jen sloupce id a nazev'),
     ], { zarovnat: 'vpravo' });
   }
@@ -1187,7 +1348,7 @@ export function vytvorUpravy(ctx) {
     const p = ui.pridat;
     if (!p) return;
     const z = document.querySelector('#male-okno');
-    const zalozka = (k, t) => h('button', { role: 'tab', 'aria-selected': String(p.zalozka === k), class: `upravy-zalozka${p.zalozka === k ? ' aktivni' : ''}`, onclick: () => { p.zalozka = k; vykresliPridat(); } }, t);
+    const zalozka = (k, t, ik) => h('button', { role: 'tab', 'aria-selected': String(p.zalozka === k), class: `upravy-zalozka${p.zalozka === k ? ' aktivni' : ''}`, onclick: () => { p.zalozka = k; vykresliPridat(); } }, ikona(ik), ' ', t);
     let telo; let pata = null;
     if (p.zalozka === 'databaze') {
       if (!databaze) telo = h('div', { class: 'upravy-okno-telo' }, h('p', { class: 'prazdne' }, 'Načítám seznam dat…'));
@@ -1257,8 +1418,8 @@ export function vytvorUpravy(ctx) {
             h('span', {}, h('strong', {}, 'Oblasti ořezové masky'), h('small', {}, m.oblasti.length ? m.oblasti.map((o) => o.nazev || o.id).join(', ') : 'Maska teď nemá žádné oblasti.')))));
     }
     z.replaceChildren(h('section', { class: 'okno upravy-okno', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Přidat data' },
-      h('div', { class: 'upravy-okno-hlava' }, h('h1', {}, 'Přidat data'), h('button', { class: 'zavrit', 'aria-label': 'Zavřít', onclick: zavriPridat }, '✕')),
-      h('div', { class: 'upravy-zalozky', role: 'tablist' }, zalozka('databaze', 'Z databáze'), zalozka('soubor', 'Ze souboru'), zalozka('mapa', 'Z mapy (data, maska)')),
+      h('div', { class: 'upravy-okno-hlava' }, h('h1', {}, 'Přidat data'), h('button', { class: 'zavrit', 'aria-label': 'Zavřít', onclick: zavriPridat }, ikona('xmark'))),
+      h('div', { class: 'upravy-zalozky', role: 'tablist' }, zalozka('databaze', 'Z databáze', 'database'), zalozka('soubor', 'Ze souboru', 'file-arrow-up'), zalozka('mapa', 'Z mapy (data, maska)', 'map')),
       telo, pata));
     z.hidden = false;
     z.onclick = (e) => { if (e.target === z) zavriPridat(); };

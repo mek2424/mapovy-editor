@@ -6,6 +6,7 @@ import { SCHEMATA, zmenySchematu, CISTY_PODKLAD } from './schemata.js';
 import * as ul from './ulozeni.js';
 import { vytvorUpravy } from './upravy.js';
 import { vytvorKvet, REZIMY as REZIMY_KVETU } from './kvet.js';
+import { ikona } from './ikony.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 
@@ -235,7 +236,7 @@ function otevriHistorii(kotva) {
     polozky.length
       ? h('div', { class: 'seznam-voleb' }, polozky.map((p) => h('button', { class: 'volba', onclick: () => { zavri(); zpet(p.pocet); } }, p.text, h('small', {}, p.kdy))))
       : h('p', { class: 'poznamka' }, 'Zatím žádné úpravy.'),
-    h('div', { class: 'poznamka' }, 'Kliknutím se vrátíš do stavu před danou úpravou – i před otevřením jiné mapy. Vrácené kroky obnovíš tlačítkem ↷.'),
+    h('div', { class: 'poznamka' }, 'Kliknutím se vrátíš do stavu před danou úpravou – i před otevřením jiné mapy. Vrácené kroky obnovíš tlačítkem Znovu.'),
   ]);
 }
 
@@ -1182,7 +1183,7 @@ function vykresliVzhled() {
     h('header', { class: 'okno-hlava jednoducha' },
       h('h1', {}, 'Vzhled mapy'),
       h('span', { class: 'nazev-v-hlave' }, stav.meta.nazev || 'Nová mapa'),
-      h('div', { class: 'okno-hlava-vpravo' }, h('button', { class: 'zavrit', 'aria-label': 'Zavřít', onclick: zavriMapy }, '×'))),
+      h('div', { class: 'okno-hlava-vpravo' }, h('button', { class: 'zavrit', 'aria-label': 'Zavřít', onclick: zavriMapy }, ikona('xmark')))),
     h('div', { class: 'nova-mapa' },
       h('div', { class: 'nova-volby' }, volbyVzhledu(n, vyber, { cislovat: false, aktualni: n.puvodni })),
       h('aside', { class: 'nova-souhrn' },
@@ -1261,7 +1262,7 @@ function vykresliMapy() {
           class: 'kontrolka velka', 'data-stav': stavTabulky, onclick: () => nactiSablony(),
           title: 'Načíst mapy z tabulky znovu',
         }, h('span', { class: 'tecka' }), { ok: 'Týmová tabulka připojená', nacitam: 'Načítám mapy…', chyba: 'Tabulka neodpovídá – zkusit znovu' }[stavTabulky]),
-        h('button', { class: 'zavrit', 'aria-label': 'Zavřít', onclick: zavriMapy }, '×'))),
+        h('button', { class: 'zavrit', 'aria-label': 'Zavřít', onclick: zavriMapy }, ikona('xmark')))),
     mapyUI.zalozka === 'tymove' ? obsahTymove() : obsahNova());
   okno.replaceChildren(okenko);
 }
@@ -1289,14 +1290,14 @@ function obsahTymove() {
   else obsah = h('div', { class: 'mrizka-map' }, mapy.map(kartaMapy));
   return [
     h('div', { class: 'okno-nastroje' },
-      h('label', { class: 'hledat' }, h('span', { class: 'lupa', 'aria-hidden': 'true' }), hledat),
+      h('label', { class: 'hledat' }, ikona('magnifying-glass', 'solid', 'lupa-ikona'), hledat),
       h('div', { class: 'cipy', role: 'group', 'aria-label': 'Filtr' },
         filtr('vse', 'Všechny'), filtr('moje', 'Moje'), filtr('svetle', 'Světlé'), filtr('tmave', 'Tmavé')),
       h('label', { class: 'razeni' }, 'Řadit',
         h('select', { onchange: (e) => { mapyUI.razeni = e.target.value; vykresliMapy(); } },
           h('option', { value: 'upraveno', selected: mapyUI.razeni === 'upraveno' }, 'Naposledy upravené'),
           h('option', { value: 'nazev', selected: mapyUI.razeni === 'nazev' }, 'Podle názvu'))),
-      h('button', { class: 'tl', onclick: () => vyberSoubor(nahrajSoubor) }, 'Nahrát soubor')),
+      h('button', { class: 'tl', onclick: () => vyberSoubor(nahrajSoubor) }, ikona('file-arrow-up'), ' Nahrát soubor')),
     h('div', { class: 'okno-telo', onclick: () => { if (mapyUI.menu) { mapyUI.menu = null; vykresliMapy(); } } }, obsah),
     h('footer', { class: 'okno-pata' },
       h('span', {}, zdrojSablon === 'prohlizec' ? 'Mapy jsou jen v tomto prohlížeči.' : 'Mapy jsou v soukromé týmové tabulce.'),
@@ -1327,7 +1328,7 @@ function kartaMapy(s) {
       h('button', {
         class: 'tri-tecky', 'aria-label': 'Další akce', 'aria-haspopup': 'menu', 'aria-expanded': String(menuOtevrene),
         onclick: (e) => { e.stopPropagation(); mapyUI.menu = menuOtevrene ? null : s.id; vykresliMapy(); },
-      }, h('span'), h('span'), h('span'))),
+      }, ikona('ellipsis'))),
     menuOtevrene ? h('div', { class: 'menu-karty', role: 'menu', onclick: (e) => e.stopPropagation() },
       polozka('Otevřít', () => otevriSablonu(s)),
       polozka('Duplikovat', () => duplikuj(s)),
@@ -1829,11 +1830,11 @@ function panelVrstvy() {
     h('div', { class: 'rychle-barvy' }, vsechnyRychle ? rychle : rychle.slice(0, RYCHLYCH_NAHORE)),
     rychle.length > RYCHLYCH_NAHORE ? h('button', {
       class: 'odkaz-tl', 'aria-expanded': String(vsechnyRychle), onclick: () => { vsechnyRychle = !vsechnyRychle; vykresliPanel(); },
-    }, vsechnyRychle ? 'Méně ▴' : `Další ${rychle.length - RYCHLYCH_NAHORE} ▾`) : null,
+    }, vsechnyRychle ? ['Méně ', ikona('chevron-up')] : [`Další ${rychle.length - RYCHLYCH_NAHORE} `, ikona('chevron-down')]) : null,
     h('div', { class: 'nadpis-sekce' },
       h('h2', {}, 'Vrstvy ', h('span', { class: 'pocet' }, String(posledniStyl.layers.length))),
-      h('button', { class: 'tl tl-male', id: 'pridat-vrstvu', 'aria-haspopup': 'menu', onclick: (e) => menuPridatVrstvu(e.currentTarget) }, '+ Přidat vrstvu'),
-      h('button', { class: 'tl tl-male tl-tecky', id: 'akce-vrstev', 'aria-label': 'Další akce s vrstvami', 'aria-haspopup': 'menu', onclick: (e) => menuVrstev(e.currentTarget) }, h('span'), h('span'), h('span'))),
+      h('button', { class: 'tl tl-male', id: 'pridat-vrstvu', 'aria-haspopup': 'menu', onclick: (e) => menuPridatVrstvu(e.currentTarget) }, ikona('plus'), ' Přidat vrstvu'),
+      h('button', { class: 'tl tl-male tl-tecky', id: 'akce-vrstev', 'aria-label': 'Další akce s vrstvami', 'aria-haspopup': 'menu', onclick: (e) => menuVrstev(e.currentTarget) }, ikona('ellipsis'))),
     SKUPINY.map(([k, nazev]) => {
       const vrstvy = podleSkupin.get(k);
       if (!vrstvy.length) return null;
@@ -1844,7 +1845,7 @@ function panelVrstvy() {
       const otevrena = otevreneSkupiny.has(k);
       return h('div', { class: `skupina${otevrena ? ' otevrena' : ''}` },
         h('header', { onclick: () => { otevrena ? otevreneSkupiny.delete(k) : otevreneSkupiny.add(k); vykresliPanel(); } },
-          zaskrt, h('span', { class: 'nazev-skupiny' }, nazev), h('span', { class: 'pocet' }, `${vid}/${vrstvy.length}`), h('span', { class: 'sipka' }, '›')),
+          zaskrt, h('span', { class: 'nazev-skupiny' }, nazev), h('span', { class: 'pocet' }, `${vid}/${vrstvy.length}`), h('span', { class: 'sipka' }, ikona('chevron-right'))),
         otevrena ? h('div', { class: 'vrstvy-skupiny' }, vrstvy.map((l) => radekVrstvy(l, pridanaIds.has(l.id)))) : null);
     }),
   ];
@@ -1865,7 +1866,7 @@ function radekVrstvy(l, pridana) {
           (b, klic) => zmena(() => nastav(l.id, 'paint', p, b), { klic, prekreslit: false }),
           { pozadi: p === 'text-color' ? barvaPevniny() : null }),
         POPISY_VLASTNOSTI[p])),
-      h('span', { class: 'sipka', onclick: () => { otevrena ? otevreneVrstvy.delete(l.id) : otevreneVrstvy.add(l.id); vykresliPanel(); } }, '›')),
+      h('span', { class: 'sipka', onclick: () => { otevrena ? otevreneVrstvy.delete(l.id) : otevreneVrstvy.add(l.id); vykresliPanel(); } }, ikona('chevron-right'))),
     otevrena ? h('div', { class: 'upravy' }, upravyVrstvy(l, pridana)) : null);
 }
 
@@ -2119,10 +2120,10 @@ function panelMaska() {
     h('div', { class: 'poznamka' }, 'Mapa se ukáže jen ve vybraných oblastech, okolí zakryje maska. Data ve Flourishi leží nad podkladem, takže je maska neořízne.'),
     m.oblasti.length
       ? h('div', { class: 'vybrane-oblasti' }, m.oblasti.map((o, i) => h('span', { class: 'stitek' }, o.nazev || o.id,
-        h('button', { title: 'Odebrat', onclick: () => zmena((s) => { s.recept.maska.oblasti.splice(i, 1); }) }, '×'))))
+        h('button', { title: 'Odebrat', onclick: () => zmena((s) => { s.recept.maska.oblasti.splice(i, 1); }) }, ikona('xmark')))))
       : h('p', { class: 'poznamka' }, 'Zatím není vybraná žádná oblast – maska je vypnutá.'),
     m.oblasti.length ? h('div', { class: 'tlacitka' },
-      h('button', { class: 'tl tl-male', onclick: priblizNaMasku }, 'Přiblížit na oblast'),
+      h('button', { class: 'tl tl-male', onclick: priblizNaMasku }, ikona('magnifying-glass-plus'), ' Přiblížit na oblast'),
       h('button', { class: 'tl tl-male', onclick: () => kartaUprav.prevzitMasku(), title: 'Obrys masky zjednodušit, sloučit nebo upravit a poslat zpátky' }, 'Upravit v kartě Úpravy'),
       h('button', { class: 'tl tl-male tl-nebezpecne', onclick: () => zmena((s) => { s.recept.maska.oblasti = []; }) }, 'Zrušit masku')) : null,
     h('h2', {}, 'Přidat stát'),
@@ -2229,7 +2230,7 @@ function seznamVybranych(pop) {
       h('button', {
         class: 'tl tl-male tl-ikona-male', title: 'Odebrat z vybraných', 'aria-label': `Odebrat ${zobrazenyNazev(n)}`,
         onclick: () => zmena((s) => { s.recept.popisky.vybraneNazvy = s.recept.popisky.vybraneNazvy.filter((x) => x !== n); }),
-      }, '×')))),
+      }, ikona('xmark'))))),
     h('div', { class: 'poznamka' }, 'Puntík: Podle druhu = jak je nastaveno nahoře pro druh sídla. Ano = puntík vždy, i při přiblížení. Platí pro názvy sídel.'),
   ];
 }
@@ -2332,7 +2333,7 @@ function panelData() {
       'Popisky nad daty'),
     h('div', { class: 'poznamka' }, 'Ve Flourishi o tom rozhoduje nastavení šablony „Draw them above the data“ – styl je na obojí připravený.'),
     h('h2', {}, 'Vlastní data'),
-    h('button', { class: 'nahrat-data', onclick: () => vyberSoubor(nahrajData, '.csv,.tsv,.txt,.json,.geojson') }, 'Nahrát CSV nebo GeoJSON'),
+    h('button', { class: 'nahrat-data', onclick: () => vyberSoubor(nahrajData, '.csv,.tsv,.txt,.json,.geojson') }, ikona('file-arrow-up'), ' Nahrát CSV nebo GeoJSON'),
     h('div', { class: 'poznamka' }, vlastniData()
       ? `Nahráno: ${vlastniData().nazev} (${vlastniData().geojson.features.length} prvků).`
       : 'CSV potřebuje sloupce se souřadnicemi (lat a lon, latitude a longitude, šířka a délka). Oddělovač čárka, středník i tabulátor, desetinná čárka nevadí.'),
@@ -2349,7 +2350,7 @@ function panelData() {
       n.vlastniBarvit === 'skala' ? h('div', { class: 'radek' }, h('label', {}, 'Škála'),
         h('select', { onchange: (e) => zmenNahled((x) => { x.skala = e.target.value; }) },
           Object.entries(SKALY).map(([k, sk]) => h('option', { value: k, selected: k === n.skala }, sk.nazev)))) : null,
-      h('div', { class: 'tlacitka' }, h('button', { class: 'tl tl-male', onclick: () => priblizNaData() }, 'Přiblížit na data'),
+      h('div', { class: 'tlacitka' }, h('button', { class: 'tl tl-male', onclick: () => priblizNaData() }, ikona('magnifying-glass-plus'), ' Přiblížit na data'),
         h('button', { class: 'tl tl-male', onclick: () => kartaUprav.prevzitData(), title: 'Zjednodušit, sloučit nebo vyčistit a poslat zpátky' }, 'Upravit v kartě Úpravy')),
     ] : null,
     h('div', { class: 'poznamka' }, 'Škály Reds, Blues a Oranges odpovídají předlohám ColorBrewer, ze kterých vychází Flourish. Vlastní data zůstávají jen v tomto prohlížeči.'),
