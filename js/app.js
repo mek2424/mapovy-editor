@@ -497,19 +497,28 @@ function nastavVyberovyRezim(zap) {
 
 let vybiracZavri = null;
 const KLIC_REZIMU_KVETU = 'mapovy-editor:kvet-rezim';
-// Výběr barvy jako „květ“: lístky podle režimu (paleta ČT, odstíny, ladící, spektrum),
-// oblouk = světlost, pod květem vlastní hex, kontrast a u ladících barev jejich názvy.
+const NAPOVEDA_REZIMU = {
+  ct: '11 barev palety ČT a jejich světlé verze', odstiny: 'Světlejší, tmavší, tlumené a papírové odstíny vybrané barvy',
+  ladi: 'Barvy, které k vybrané ladí podle barevného kruhu', spektrum: 'Celé spektrum mimo paletu',
+};
+// Výběr barvy jako „květ“: rozkvete přímo ze vzorku, nad panelem, bez dalšího okna.
+// Pod květem je jen malý proužek: režim lístků, kód barvy, kontrast (a případně styl čáry).
 function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null, navic = null } = {}) {
   if (vybiracZavri) vybiracZavri(false);
   const box = $('#vybirac');
   box.classList.remove('popup');
-  box.classList.add('kvet-okno');
+  box.classList.add('kvet-plovouci');
   const klic = `barva-${Date.now()}`;
   let zvolena = hex(aktualni) || '#001464';
   let zmeneno = false;
   let rezim = 'ct';
   try { rezim = localStorage.getItem(KLIC_REZIMU_KVETU) || 'ct'; } catch { /* nevadí */ }
   if (!REZIMY_KVETU.some(([k]) => k === rezim)) rezim = 'ct';
+
+  // Střed květu = střed vzorku (u dlaždic rychlých barev jejich kulatý vzorek).
+  const vzorek = kotva.querySelector('.vzorek-velky') || kotva;
+  const r = vzorek.getBoundingClientRect();
+  const stred = Math.round(Math.max(24, Math.min(34, Math.max(r.width, r.height) + 6)));
 
   const nahled = h('span', { class: 'kvet-nahled' });
   const poleHex = h('input', {
@@ -524,10 +533,17 @@ function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null, navic = null 
     type: 'color', class: 'kvet-nativni', title: 'Vybrat přesně (systémový výběr barvy)', 'aria-label': 'Vybrat přesně',
     oninput: (e) => { vyber(e.target.value); prestav(e.target.value); },
   });
-  const kontrastBox = h('div', { class: 'kvet-kontrast' });
+  const kontrastBox = h('span', { class: 'kvet-kontrast' });
   const ladiciBox = h('div', { class: 'kvet-ladici' });
-  const hostitel = h('div', { class: 'kvet-host' });
   const prepinace = h('div', { class: 'kvet-rezimy', role: 'radiogroup', 'aria-label': 'Které barvy rozkvetou' });
+  const hostitel = h('div', { class: 'kvet-host', style: `width:${stred}px;height:${stred}px` });
+  const prouzek = h('div', { class: 'kvet-prouzek' },
+    prepinace,
+    h('div', { class: 'kvet-info' }, nahled, poleHex, poleBarvy, kontrastBox),
+    ladiciBox,
+    navic && navic.length ? h('div', { class: 'kvet-navic' }, navic) : null);
+  // Knihovna sbaluje květ při kliknutí mimo něj – proužek k němu ale patří.
+  prouzek.addEventListener('mousedown', (e) => e.stopPropagation());
 
   function obnovInfo() {
     nahled.style.background = zvolena;
@@ -535,22 +551,21 @@ function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null, navic = null 
     poleBarvy.value = zvolena;
     const k = pozadi ? kontrast(zvolena, pozadi) : null;
     kontrastBox.className = `kvet-kontrast${k != null && k < 3 ? ' spatny' : ''}`;
-    kontrastBox.textContent = k == null ? (PALETA_CT.includes(zvolena) ? 'Barva z palety ČT' : '')
-      : `Kontrast vůči podkladu ${k.toFixed(1).replace('.', ',')} : 1 – ${k >= 4.5 ? 'dobře čitelné' : k >= 3 ? 'čitelné u většího písma' : 'špatně čitelné'}`;
+    kontrastBox.textContent = k != null ? `kontrast ${k.toFixed(1).replace('.', ',')} : 1` : PALETA_CT.includes(zvolena) ? '✓ paleta ČT' : '';
+    kontrastBox.title = k != null ? (k >= 4.5 ? 'Dobře čitelné' : k >= 3 ? 'Čitelné jen u většího písma' : 'Špatně čitelné') : '';
     ladiciBox.replaceChildren(...(rezim === 'ladi' ? ladici(zvolena).map((x) => h('button', {
       type: 'button', class: `kvet-cip${hex(x.barva) === zvolena ? ' zvoleny' : ''}`, title: x.barva,
       onclick: () => { vyber(x.barva); kvet.nastavBarvu(x.barva); },
     }, h('span', { class: 'v', style: `background:${x.barva}` }), x.nazev + (x.zPalety ? ' ✓' : ''))) : []));
-    prepinace.replaceChildren(...REZIMY_KVETU.map(([k, t]) => h('button', {
-      type: 'button', role: 'radio', 'aria-checked': String(k === rezim), class: k === rezim ? 'zvoleny' : '',
-      title: { ct: '11 barev palety ČT a jejich světlé verze', odstiny: 'Světlejší, tmavší, tlumené a papírové odstíny vybrané barvy', ladi: 'Barvy, které k vybrané ladí podle barevného kruhu', spektrum: 'Celé spektrum mimo paletu' }[k],
+    prepinace.replaceChildren(...REZIMY_KVETU.map(([k2, t]) => h('button', {
+      type: 'button', role: 'radio', 'aria-checked': String(k2 === rezim), class: k2 === rezim ? 'zvoleny' : '', title: NAPOVEDA_REZIMU[k2],
       onclick: () => {
-        if (k === rezim) return;
-        rezim = k;
-        try { localStorage.setItem(KLIC_REZIMU_KVETU, k); } catch { /* nevadí */ }
-        kvet.nastavRezim(k, zvolena);
+        if (k2 === rezim) return;
+        rezim = k2;
+        try { localStorage.setItem(KLIC_REZIMU_KVETU, k2); } catch { /* nevadí */ }
+        kvet.nastavRezim(k2, zvolena);
         obnovInfo();
-        umisti();
+        setTimeout(umisti, 560);
       },
     }, t)));
   }
@@ -562,57 +577,71 @@ function otevriVybirac(kotva, aktualni, poVyberu, { pozadi = null, navic = null 
     obnovInfo();
   }
 
-  // Okno se otevře vedle panelu (nezakrývá ovládání) a vždy se celé vejde na obrazovku.
-  function umisti() {
-    const r = kotva.getBoundingClientRect();
-    const panel = kotva.closest('.panel')?.getBoundingClientRect();
-    const sirka = box.offsetWidth;
-    const vyska = box.offsetHeight;
-    const x = panel ? panel.right + 10 : r.left;
-    box.style.left = `${Math.max(8, Math.min(x, innerWidth - sirka - 8))}px`;
-    box.style.top = `${Math.max(8, Math.min(r.top + r.height / 2 - 150, innerHeight - vyska - 8))}px`;
-  }
-
   function vyber(b) {
     zvolena = hex(b) || zvolena;
     zmeneno = true;
     poVyberu(zvolena, klic);
     // Vzorek v panelu se překreslí hned, celý panel až po zavření výběru.
     kotva.classList.remove('vyraz');
-    const sp = kotva.querySelector('span');
+    const sp = kotva.querySelector('.vzorek-velky') || kotva.querySelector('span');
     if (sp) { sp.style.background = zvolena; sp.classList.remove('vyraz'); }
     obnovInfo();
   }
 
-  box.replaceChildren(...[
-    ...(navic || []),
-    prepinace,
-    hostitel,
-    h('div', { class: 'kvet-info' }, nahled, poleHex, poleBarvy),
-    kontrastBox,
-    ladiciBox,
-    h('div', { class: 'poznamka kvet-napoveda' }, 'Klikni na lístek, oblouk vpravo mění světlost. ✓ = barva přímo z palety ČT.'),
-  ].filter(Boolean));
-  const kvet = vytvorKvet(hostitel, { barva: zvolena, rezim, naVyber: (b) => vyber(b) });
-  obnovInfo();
-
-  box.hidden = false;
-  umisti();
-
-  const venku = (e) => { if (!box.contains(e.target) && e.target !== kotva && !kotva.contains(e.target)) zavri(); };
-  const esc = (e) => { if (e.key === 'Escape') zavri(); };
-  function zavri(prekreslit = true) {
-    box.hidden = true;
-    box.classList.remove('kvet-okno');
-    kvet.znic();
-    document.removeEventListener('mousedown', venku);
-    document.removeEventListener('keydown', esc);
-    vybiracZavri = null;
-    // Panel až po dokončení kliknutí, jinak by zmizel vzorek, na který se právě kliká.
-    if (prekreslit && zmeneno) setTimeout(() => { if ($('#vybirac').hidden) { prekreslitPoStylu = true; naplanujMapu(); } }, 250);
+  // Proužek pod květem (nebo nad ním, když dole není místo); květ sám se drží u vzorku.
+  // Měří se celý rozvitý květ (lístky, kruh i oblouk), až když dokvete.
+  function umisti() {
+    const k = kvet.kontejner();
+    if (!k) return;
+    const b = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const el of [k, ...k.querySelectorAll('*')]) {
+      const q = el.getBoundingClientRect();
+      if (!q.width || !q.height) continue;
+      b[0] = Math.min(b[0], q.left); b[1] = Math.min(b[1], q.top); b[2] = Math.max(b[2], q.right); b[3] = Math.max(b[3], q.bottom);
+    }
+    const sirka = prouzek.offsetWidth; const vyska = prouzek.offsetHeight;
+    const sx = (b[0] + b[2]) / 2;
+    let y = b[3] + 8;
+    if (y + vyska > innerHeight - 8) y = b[1] - vyska - 8;
+    prouzek.style.left = `${Math.max(8, Math.min(sx - sirka / 2, innerWidth - sirka - 8))}px`;
+    prouzek.style.top = `${Math.max(8, y)}px`;
   }
-  setTimeout(() => { document.addEventListener('mousedown', venku); document.addEventListener('keydown', esc); });
-  vybiracZavri = zavri;
+
+  box.style.left = `${r.left + r.width / 2 - stred / 2}px`;
+  box.style.top = `${r.top + r.height / 2 - stred / 2}px`;
+  box.replaceChildren(hostitel, prouzek);
+  box.hidden = false;
+  let zavirani = false;
+  const kvet = vytvorKvet(hostitel, {
+    barva: zvolena, rezim, velikostStredu: stred, naVyber: (b) => vyber(b),
+    naZavreni: () => dokonci(),
+  });
+  obnovInfo();
+  requestAnimationFrame(() => {
+    kvet.rozkvet();
+    setTimeout(() => { umisti(); prouzek.classList.add('videt'); }, 520);
+  });
+
+  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); kvet.zavri(); } };
+  // Sbalení: proužek zmizí hned, květ se poskládá zpátky do vzorku a pak se odstraní.
+  function dokonci(prekreslit = true) {
+    if (zavirani) return;
+    zavirani = true;
+    prouzek.classList.remove('videt');
+    document.removeEventListener('keydown', esc, true);
+    vybiracZavri = null;
+    setTimeout(() => {
+      kvet.znic();
+      if (vybiracZavri) return; // mezitím se otevřel jiný výběr
+      box.hidden = true;
+      box.classList.remove('kvet-plovouci');
+      box.replaceChildren();
+    }, prekreslit ? 650 : 0);
+    // Panel až po sbalení, jinak by zmizel vzorek, ze kterého květ vyrůstá.
+    if (prekreslit && zmeneno) setTimeout(() => { if (!vybiracZavri) { prekreslitPoStylu = true; naplanujMapu(); } }, 700);
+  }
+  document.addEventListener('keydown', esc, true);
+  vybiracZavri = (prekreslit = true) => { if (prekreslit) kvet.zavri(); else dokonci(false); };
 }
 
 function vzorekBarvy(hodnota, onclick, titulek) {

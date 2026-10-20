@@ -739,33 +739,48 @@ button.upravy-volba:hover:not(:disabled) { border-color: var(--modra); }
 }
 
 /* ---------------------------------------------------------------- Květ barev (výběr barvy) */
-.vybirac.kvet-okno { width: 340px; padding: 12px 14px 10px; }
-.kvet-rezimy { display: flex; gap: 4px; background: var(--plocha); border-radius: 999px; padding: 3px; }
+/* Vzorky barev jsou kulaté – z nich květ vyrůstá. */
+.vzorek { width: 24px; height: 24px; border-radius: 50%; }
+.vzorek-velky { border-radius: 50%; }
+.upravy-vrstva .vzorek { width: 20px; height: 20px; border-radius: 50%; }
+
+.vybirac.kvet-plovouci {
+  width: auto; padding: 0; background: none; border: 0; box-shadow: none; overflow: visible; z-index: 55;
+}
+.kvet-host { display: flex; align-items: center; justify-content: center; }
+.kvet-host .bcp-root { filter: drop-shadow(0 10px 24px rgba(0, 20, 100, 0.22)); }
+.kvet-prouzek {
+  position: fixed; width: 300px; background: var(--bila); border-radius: 14px; padding: 8px;
+  box-shadow: 0 10px 30px rgba(0, 20, 100, 0.22); display: flex; flex-direction: column; gap: 6px;
+  opacity: 0; transform: translateY(-6px) scale(0.97); transition: opacity 0.18s, transform 0.22s; pointer-events: none;
+}
+.kvet-prouzek.videt { opacity: 1; transform: none; pointer-events: auto; }
+.kvet-rezimy { display: flex; gap: 2px; background: var(--plocha); border-radius: 999px; padding: 3px; }
 .kvet-rezimy button {
-  flex: 1; height: 30px; border: 0; background: none; border-radius: 999px; cursor: pointer;
-  font-size: 12.5px; color: var(--text-2); white-space: nowrap;
+  flex: 1; height: 26px; border: 0; background: none; border-radius: 999px; cursor: pointer;
+  font-size: 12px; color: var(--text-2); white-space: nowrap; padding: 0 6px;
 }
 .kvet-rezimy button:hover { color: var(--modra); }
 .kvet-rezimy button.zvoleny { background: var(--bila); color: var(--modra); font-weight: 700; box-shadow: 0 1px 4px rgba(0, 20, 100, 0.14); }
-.kvet-host { height: 272px; display: flex; align-items: center; justify-content: center; margin: 2px 0; position: relative; }
-.kvet-host .bcp-root { transform: translateX(-14px); }
-.kvet-info { display: flex; align-items: center; gap: 8px; }
-.kvet-nahled { width: 34px; height: 34px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
+.kvet-info { display: flex; align-items: center; gap: 6px; }
+.kvet-nahled { width: 26px; height: 26px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
 .kvet-hex {
-  flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--cara); border-radius: 8px;
-  font-family: ui-monospace, monospace; font-size: 13.5px; text-transform: lowercase;
+  width: 92px; height: 28px; padding: 0 8px; border: 1px solid var(--cara); border-radius: 7px;
+  font-family: ui-monospace, monospace; font-size: 12.5px; text-transform: lowercase;
 }
 .kvet-hex:focus { outline: none; border-color: var(--modra); box-shadow: 0 0 0 3px var(--modra-svetla); }
-.kvet-nativni { width: 38px; height: 34px; padding: 2px; border: 1px solid var(--cara); border-radius: 8px; background: var(--bila); cursor: pointer; flex: none; }
-.kvet-kontrast { font-size: 12px; color: var(--text-2); margin: 6px 0 0; min-height: 16px; }
-.kvet-kontrast.spatny { color: var(--cervena); }
-.kvet-ladici { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.kvet-nativni { width: 30px; height: 28px; padding: 2px; border: 1px solid var(--cara); border-radius: 7px; background: var(--bila); cursor: pointer; flex: none; }
+.kvet-kontrast { font-size: 11.5px; color: var(--text-2); margin-left: auto; white-space: nowrap; }
+.kvet-kontrast.spatny { color: var(--cervena); font-weight: 600; }
+.kvet-ladici { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
 .kvet-ladici:empty { display: none; }
 .kvet-cip {
   display: flex; align-items: center; gap: 6px; border: 1px solid var(--cara); background: var(--bila);
-  border-radius: 7px; padding: 4px 6px; font-size: 11.5px; cursor: pointer; text-align: left;
+  border-radius: 7px; padding: 3px 6px; font-size: 11.5px; cursor: pointer; text-align: left;
 }
 .kvet-cip:hover { border-color: var(--modra); }
 .kvet-cip.zvoleny { border-color: var(--modra); background: var(--modra-svetla); }
-.kvet-cip .v { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
-.kvet-napoveda { margin: 6px 0 0; }
+.kvet-cip .v { width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.kvet-navic { border-top: 1px solid var(--cara); padding-top: 6px; }
+.kvet-navic h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); margin: 0 0 4px; }
+.kvet-navic .radek { margin: 0; }

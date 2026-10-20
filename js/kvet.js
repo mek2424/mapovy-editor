@@ -43,23 +43,25 @@ function hodnotaZHex(b) {
   return { hue: h, saturation: lightnessToSliderValue(l), lightness: l, originalSaturation: s, alpha: 100, layer: 'outer' };
 }
 
-// Vloží květ do prvku. naVyber(hex) se volá při každé změně (i při tažení oblouku).
-// Vrací { nastavBarvu(hex), nastavRezim(rezim), znic() }.
-export function vytvorKvet(prvek, { barva, rezim = 'ct', naVyber }) {
+// Vloží květ do prvku a nechá ho rozkvést. naVyber(hex) se volá při každé změně
+// (i při tažení oblouku), naZavreni() když se květ sbalí (klik mimo, na střed, Esc).
+// Vrací { nastavBarvu(hex), nastavRezim(rezim), zavri(), znic(), kontejner() }.
+export function vytvorKvet(prvek, { barva, rezim = 'ct', naVyber, naZavreni, velikostStredu = 30 }) {
   let aktualni = hex(barva) || '#001464';
   let listky = barvyRezimu(rezim, aktualni);
   let potlacit = false;
   const picker = new BlossomColorPicker(prvek, {
     colors: listky || undefined,
     defaultValue: hodnotaZHex(aktualni),
-    initialExpanded: true,
-    collapsible: false,
+    initialExpanded: false,
+    collapsible: true,
     showCoreColor: true,
-    adaptivePositioning: false,
+    adaptivePositioning: true,
     sliderPosition: 'right',
-    petalSize: 34,
-    coreSize: 38,
-    animationDuration: 260,
+    petalSize: 32,
+    coreSize: velikostStredu,
+    animationDuration: 280,
+    onCollapse: () => naZavreni?.(),
     onChange: (c) => {
       if (potlacit) return;
       let vysledek = c.hex.toLowerCase();
@@ -91,7 +93,10 @@ export function vytvorKvet(prvek, { barva, rezim = 'ct', naVyber }) {
       picker.setValue(hodnotaZHex(aktualni));
       potlacit = false;
     },
+    zavri() { picker.collapse(); },
     znic() { picker.destroy(); },
+    kontejner: () => prvek.querySelector('.bcp-container'),
+    rozkvet: () => picker.expand(),
   };
 }
 
