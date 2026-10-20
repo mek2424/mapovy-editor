@@ -737,3 +737,35 @@ button.upravy-volba:hover:not(:disabled) { border-color: var(--modra); }
   .upravy-okno-telo.dve { flex-direction: column; overflow-y: auto; }
   .upravy-okno-levy { width: auto; border-right: 0; border-bottom: 1px solid var(--cara); max-height: 260px; }
 }
+
+/* ---------------------------------------------------------------- Květ barev (výběr barvy) */
+.vybirac.kvet-okno { width: 340px; padding: 12px 14px 10px; }
+.kvet-rezimy { display: flex; gap: 4px; background: var(--plocha); border-radius: 999px; padding: 3px; }
+.kvet-rezimy button {
+  flex: 1; height: 30px; border: 0; background: none; border-radius: 999px; cursor: pointer;
+  font-size: 12.5px; color: var(--text-2); white-space: nowrap;
+}
+.kvet-rezimy button:hover { color: var(--modra); }
+.kvet-rezimy button.zvoleny { background: var(--bila); color: var(--modra); font-weight: 700; box-shadow: 0 1px 4px rgba(0, 20, 100, 0.14); }
+.kvet-host { height: 272px; display: flex; align-items: center; justify-content: center; margin: 2px 0; position: relative; }
+.kvet-host .bcp-root { transform: translateX(-14px); }
+.kvet-info { display: flex; align-items: center; gap: 8px; }
+.kvet-nahled { width: 34px; height: 34px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
+.kvet-hex {
+  flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--cara); border-radius: 8px;
+  font-family: ui-monospace, monospace; font-size: 13.5px; text-transform: lowercase;
+}
+.kvet-hex:focus { outline: none; border-color: var(--modra); box-shadow: 0 0 0 3px var(--modra-svetla); }
+.kvet-nativni { width: 38px; height: 34px; padding: 2px; border: 1px solid var(--cara); border-radius: 8px; background: var(--bila); cursor: pointer; flex: none; }
+.kvet-kontrast { font-size: 12px; color: var(--text-2); margin: 6px 0 0; min-height: 16px; }
+.kvet-kontrast.spatny { color: var(--cervena); }
+.kvet-ladici { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 6px; }
+.kvet-ladici:empty { display: none; }
+.kvet-cip {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--cara); background: var(--bila);
+  border-radius: 7px; padding: 4px 6px; font-size: 11.5px; cursor: pointer; text-align: left;
+}
+.kvet-cip:hover { border-color: var(--modra); }
+.kvet-cip.zvoleny { border-color: var(--modra); background: var(--modra-svetla); }
+.kvet-cip .v { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+.kvet-napoveda { margin: 6px 0 0; }
