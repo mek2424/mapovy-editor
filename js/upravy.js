@@ -241,6 +241,11 @@ export function vytvorUpravy(ctx) {
     return databaze;
   }
 
+  // Hledání v „Přidat data“: území podle názvu, anglického názvu a kódu; vrstvy jen ty, které mají
+  // v indexu slova k hledání (sporná území), aby „úroveň“ nenašla všechny státy.
+  const odpovidaUzemi = (x, q) => bezDiakritiky(`${x.nazev} ${x.hledat || ''} ${x.kod}`).includes(q);
+  const vrstvyKHledani = (x, q) => (x.vrstvy || []).filter((vr) => vr.hledat && bezDiakritiky(`${vr.nazev} ${vr.hledat}`).includes(q));
+
   async function nactiZDatabaze(uzemi, vrstva, plna) {
     const k = vrstva.klic || '';
     if (k === 'ne:svet') {
@@ -1354,17 +1359,28 @@ export function vytvorUpravy(ctx) {
       if (!databaze) telo = h('div', { class: 'upravy-okno-telo' }, h('p', { class: 'prazdne' }, 'Načítám seznam dat…'));
       else {
         const q = bezDiakritiky(p.hledat.trim());
-        const uzemi = databaze.uzemi.filter((x) => !q || bezDiakritiky(`${x.nazev} ${x.hledat || ''} ${x.kod}`).includes(q));
+        const uzemi = databaze.uzemi.filter((x) => !q || odpovidaUzemi(x, q) || vrstvyKHledani(x, q).length);
         const zvolene = databaze.uzemi.find((x) => x.kod === p.uzemi);
         const skupiny = new Map();
         for (const vr of zvolene?.vrstvy || []) skupiny.set(vr.skupina || 'Ostatní', [...(skupiny.get(vr.skupina || 'Ostatní') || []), vr]);
-        const hledat = h('input', { class: 'pole velke', type: 'search', placeholder: 'Hledat zemi nebo celek…', value: p.hledat, 'aria-label': 'Hledat území', oninput: (e) => { p.hledat = e.target.value; obnovUzemi(); } });
+        const hledat = h('input', { class: 'pole velke', type: 'search', placeholder: 'Hledat zemi, celek nebo sporné území…', value: p.hledat, 'aria-label': 'Hledat území', oninput: (e) => { p.hledat = e.target.value; obnovUzemi(); } });
         const seznam = h('div', { class: 'upravy-uzemi' });
         const obnovUzemi = () => {
           const q2 = bezDiakritiky(p.hledat.trim());
-          seznam.replaceChildren(...databaze.uzemi.filter((x) => !q2 || bezDiakritiky(`${x.nazev} ${x.hledat || ''} ${x.kod}`).includes(q2)).slice(0, 300).map((x) => h('button', {
-            class: `volba${x.kod === p.uzemi ? ' zvolena' : ''}`, onclick: () => { p.uzemi = x.kod; vykresliPridat(); },
-          }, x.nazev, h('small', { class: x.pozn === 'nejpodrobnější' ? 'zelene' : '' }, x.pozn || ''))));
+          // Vrstvy, které jdou najít jménem (sporná území – Tibet, Krym…), jako samostatné řádky nahoře:
+          // klik otevře jejich území a vrstvu rovnou zaškrtne.
+          const vrstvy = q2 ? databaze.uzemi.flatMap((x) => vrstvyKHledani(x, q2).map((vr) => ({ x, vr }))) : [];
+          seznam.replaceChildren(
+            ...vrstvy.slice(0, 50).map(({ x, vr }) => {
+              const klic = `${x.kod}|${vr.klic}`;
+              return h('button', {
+                class: `volba${x.kod === p.uzemi && p.zvolene.has(klic) ? ' zvolena' : ''}`,
+                onclick: () => { p.uzemi = x.kod; p.zvolene.add(klic); vykresliPridat(); },
+              }, vr.nazev, h('small', {}, x.nazev));
+            }),
+            ...databaze.uzemi.filter((x) => !q2 || odpovidaUzemi(x, q2)).slice(0, 300).map((x) => h('button', {
+              class: `volba${x.kod === p.uzemi ? ' zvolena' : ''}`, onclick: () => { p.uzemi = x.kod; vykresliPridat(); },
+            }, x.nazev, h('small', { class: x.pozn === 'nejpodrobnější' ? 'zelene' : '' }, x.pozn || ''))));
         };
         obnovUzemi();
         telo = h('div', { class: 'upravy-okno-telo dve' },
